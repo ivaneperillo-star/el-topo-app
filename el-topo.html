@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0d0d0f" />
+<title>El Topo</title>
+<style>
+  :root{
+    --bg:#0d0d0f;
+    --panel:#161619;
+    --panel-2:#1e1e23;
+    --stroke:rgba(255,255,255,.07);
+    --red:#e63140;
+    --red-soft:#b5232f;
+    --red-glow:rgba(230,49,64,.35);
+    --txt:#f4f4f6;
+    --muted:#8a8a93;
+    --ok:#2ecc71;
+    --radius:22px;
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:var(--font);overscroll-behavior:none}
+  body{max-width:480px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:90px}
+  h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.02em}
+  .muted{color:var(--muted)}
+  .red{color:var(--red)}
+  .hidden{display:none!important}
+
+  /* ---------- App bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 8px}
+  .topbar .hi{font-size:13px;color:var(--muted)}
+  .topbar .name{font-size:20px;font-weight:800}
+  .avatar{width:46px;height:46px;border-radius:50%;object-fit:cover;background:var(--panel-2);border:1px solid var(--stroke)}
+
+  /* ---------- Cards ---------- */
+  .wrap{padding:0 20px}
+  .card{background:var(--panel);border:1px solid var(--stroke);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+  .card.hero{background:linear-gradient(160deg,#1c1c21 0%,#121214 100%);position:relative;overflow:hidden}
+  .card.red{background:linear-gradient(150deg,var(--red) 0%,var(--red-soft) 100%);border:none;box-shadow:0 12px 30px -10px var(--red-glow)}
+  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .big{font-size:46px;font-weight:800;line-height:1;letter-spacing:-.03em}
+
+  /* ---------- Buttons ---------- */
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:none;border-radius:18px;
+    padding:18px;font-size:16px;font-weight:700;font-family:var(--font);cursor:pointer;transition:transform .08s ease,opacity .2s}
+  .btn:active{transform:scale(.97)}
+  .btn-primary{background:var(--red);color:#fff;box-shadow:0 10px 24px -8px var(--red-glow)}
+  .btn-ghost{background:var(--panel-2);color:var(--txt);border:1px solid var(--stroke)}
+  .btn-block{margin-top:10px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-sm{padding:12px 14px;font-size:14px;border-radius:14px;width:auto}
+
+  /* ---------- Inputs ---------- */
+  label.fl{display:block;font-size:12px;color:var(--muted);margin:14px 2px 6px;font-weight:600}
+  input,select,textarea{width:100%;background:var(--panel-2);border:1px solid var(--stroke);border-radius:14px;
+    padding:15px;color:var(--txt);font-size:16px;font-family:var(--font);outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--red)}
+  textarea{resize:vertical;min-height:90px}
+
+  /* ---------- Nav ---------- */
+  .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
+    background:rgba(13,13,15,.92);backdrop-filter:blur(14px);border-top:1px solid var(--stroke);
+    display:flex;justify-content:space-around;padding:10px 8px calc(10px + env(safe-area-inset-bottom))}
+  .nav button{background:none;border:none;color:var(--muted);font-size:11px;font-weight:600;display:flex;
+    flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:6px 10px;border-radius:12px;flex:1}
+  .nav button .ic{font-size:20px}
+  .nav button.active{color:var(--red)}
+
+  /* ---------- Ranking ---------- */
+  .rank-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--stroke)}
+  .rank-row:last-child{border-bottom:none}
+  .rank-pos{width:26px;font-weight:800;color:var(--muted);text-align:center}
+  .rank-pos.top{color:var(--red)}
+  .rank-pts{margin-left:auto;font-weight:800;font-size:18px}
+
+  /* ---------- Pills / badges ---------- */
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--stroke);
+    border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;margin:0 6px 6px 0}
+  .pill.red{background:var(--red);border:none;color:#fff}
+  .badge-topo{background:var(--red);color:#fff;font-weight:800;font-size:12px;padding:6px 12px;border-radius:999px}
+
+  /* ---------- Feed ---------- */
+  .feed-item{background:var(--panel-2);border:1px solid var(--stroke);border-radius:16px;overflow:hidden;margin-bottom:14px}
+  .feed-item img{width:100%;display:block}
+  .feed-item .body{padding:14px}
+  .feed-item audio{width:100%;margin-top:8px}
+
+  /* ---------- Timer ---------- */
+  .timer{font-size:34px;font-weight:800;text-align:center;letter-spacing:.02em}
+  .timer.warn{color:var(--red)}
+  .qprogress{height:6px;background:var(--panel-2);border-radius:99px;overflow:hidden;margin:12px 0}
+  .qprogress > i{display:block;height:100%;background:var(--red);transition:width .3s}
+
+  /* ---------- Question options ---------- */
+  .opt{display:block;width:100%;text-align:left;background:var(--panel-2);border:1px solid var(--stroke);
+    border-radius:14px;padding:16px;margin-bottom:10px;color:var(--txt);font-size:16px;font-weight:600;cursor:pointer}
+  .opt.sel{background:var(--red);border-color:var(--red);color:#fff}
+  .opt-photo{display:flex;align-items:center;gap:12px}
+  .opt-photo img{width:40px;height:40px;border-radius:50%;object-fit:cover}
+
+  /* ---------- Admin grid ---------- */
+  .grid-q{border:1px solid var(--stroke);border-radius:14px;padding:14px;margin-bottom:12px;background:var(--panel-2)}
+  .grid-q .qtxt{font-weight:700;font-size:14px;margin-bottom:10px}
+  .grid-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .grid-row .pn{flex:1;font-size:13px;color:var(--muted)}
+  .grid-row select{width:auto;padding:8px 10px;font-size:14px}
+
+  /* ---------- Misc ---------- */
+  .center{text-align:center}
+  .spinner{width:34px;height:34px;border:3px solid var(--stroke);border-top-color:var(--red);border-radius:50%;
+    animation:spin .7s linear infinite;margin:30px auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:var(--panel-2);
+    border:1px solid var(--stroke);color:var(--txt);padding:13px 20px;border-radius:14px;font-size:14px;font-weight:600;
+    z-index:999;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+  .toast.show{opacity:1}
+  .divider{height:1px;background:var(--stroke);margin:18px 0}
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat{background:var(--panel-2);border:1px solid var(--stroke);border-radius:16px;padding:16px}
+  .stat .l{font-size:12px;color:var(--muted)}
+  .stat .v{font-size:26px;font-weight:800;margin-top:4px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ============ AUTH ============ -->
+<div id="auth" class="wrap" style="padding-top:60px">
+  <div class="center" style="margin-bottom:30px">
+    <div style="font-size:54px">🕵️</div>
+    <h1 style="font-size:38px;margin-top:8px">El Topo</h1>
+    <p class="muted">Descubrí quién es. Cada semana.</p>
+  </div>
+
+  <div class="card" id="loginCard">
+    <h3 style="margin-bottom:6px">Iniciar sesión</h3>
+    <label class="fl">Usuario</label>
+    <input id="liUser" autocapitalize="none" autocomplete="username" placeholder="tu usuario" />
+    <label class="fl">Contraseña</label>
+    <input id="liPass" type="password" autocomplete="current-password" placeholder="••••••" />
+    <button class="btn btn-primary btn-block" onclick="doLogin()">Entrar</button>
+    <p class="center muted" style="margin:16px 0 0;font-size:14px">¿No tenés cuenta?
+      <a href="#" onclick="showRegister();return false" class="red" style="text-decoration:none;font-weight:700">Registrate</a></p>
+  </div>
+
+  <div class="card hidden" id="regCard">
+    <h3 style="margin-bottom:6px">Crear cuenta</h3>
+    <label class="fl">Nombre para mostrar</label>
+    <input id="rgName" placeholder="Ej. Iván" />
+    <label class="fl">Usuario</label>
+    <input id="rgUser" autocapitalize="none" placeholder="elegí un usuario" />
+    <label class="fl">Contraseña</label>
+    <input id="rgPass" type="password" placeholder="••••••" />
+    <label class="fl">Foto de perfil (para la votación)</label>
+    <input id="rgPhoto" type="file" accept="image/*" />
+    <button class="btn btn-primary btn-block" id="rgBtn" onclick="doRegister()">Crear cuenta</button>
+    <p class="center muted" style="margin:16px 0 0;font-size:14px">¿Ya tenés cuenta?
+      <a href="#" onclick="showLogin();return false" class="red" style="text-decoration:none;font-weight:700">Iniciá sesión</a></p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <div>
+      <div class="hi">Hola de nuevo</div>
+      <div class="name" id="meName">—</div>
+    </div>
+    <img id="meAvatar" class="avatar" src="" alt="" />
+  </div>
+
+  <!-- HOME -->
+  <section id="view-home" class="wrap view"></section>
+  <!-- TOPO -->
+  <section id="view-topo" class="wrap view hidden"></section>
+  <!-- FEED -->
+  <section id="view-feed" class="wrap view hidden"></section>
+  <!-- VOTE -->
+  <section id="view-vote" class="wrap view hidden"></section>
+  <!-- ADMIN -->
+  <section id="view-admin" class="wrap view hidden"></section>
+
+  <nav class="nav">
+    <button data-v="home" class="active" onclick="go('home')"><span class="ic">🏠</span>Inicio</button>
+    <button data-v="topo" onclick="go('topo')"><span class="ic">🕵️</span>Topo</button>
+    <button data-v="feed" onclick="go('feed')"><span class="ic">📸</span>Pistas</button>
+    <button data-v="vote" onclick="go('vote')"><span class="ic">🗳️</span>Votar</button>
+    <button data-v="admin" id="navAdmin" onclick="go('admin')"><span class="ic">⚙️</span>Admin</button>
+  </nav>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc,
+  deleteDoc, query, where, onSnapshot, serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ---------- CONFIG ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyBWXJP1dciLtw3oTjgqpgmXNth0AUX1KHk",
+  authDomain: "apps-peri.firebaseapp.com",
+  projectId: "apps-peri",
+  storageBucket: "apps-peri.firebasestorage.app",
+  messagingSenderId: "743307331446",
+  appId: "1:743307331446:web:a5e9b2a82800697d095c57"
+};
+const CLOUD_NAME = "denvtixo2";
+const UPLOAD_PRESET = "el_topo_uploads";
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp, "iddefaultv1");
+
+/* ---------- Firestore namespaced under /eltopo/main ---------- */
+const ROOT = doc(db, "eltopo", "main");
+const playersCol  = collection(ROOT, "players");
+const questionsCol= collection(ROOT, "questions");
+const subsCol     = collection(ROOT, "submissions");
+const respCol     = collection(ROOT, "responses");
+const stateDoc    = doc(ROOT, "meta", "state");
+
+/* ---------- Seed questions (banco de 20, ampliable) ---------- */
+const SEED_QUESTIONS = [
+  {t:"¿El topo es hombre o mujer?", o:["Hombre","Mujer"]},
+  {t:"¿El topo tiene más de 40 años?"},
+  {t:"¿El topo tiene hijos?"},
+  {t:"¿El topo tiene tatuajes?"},
+  {t:"¿El topo es el mayor de sus hermanos?"},
+  {t:"¿El topo va a la universidad actualmente?"},
+  {t:"¿El topo cree en las energías?"},
+  {t:"¿El topo juega o jugó al básquet alguna vez?"},
+  {t:"¿El topo usa anteojos de ver?"},
+  {t:"¿El topo está casado?"},
+  {t:"¿El topo nació en CABA?"},
+  {t:"¿El topo bebe alcohol?"},
+  {t:"¿El topo fue policía?"},
+  {t:"¿El topo sabe tocar la guitarra?"},
+  {t:"¿El topo es team invierno o team verano?", o:["Invierno","Verano"]},
+  {t:"¿El topo conoce el norte de Argentina?"},
+  {t:"¿El topo instaló alguna vez cámaras de seguridad?"},
+  {t:"¿El topo mira a menudo TikTok?"},
+  {t:"¿El topo tomó clases de kayak?"},
+  {t:"¿El topo tiene pasaporte europeo?"},
+];
+
+/* ---------- Consignas ---------- */
+const COLORS = ["rojo","azul","verde","amarillo","naranja","violeta","rosa","marrón","negro","blanco","gris","celeste","dorado","plateado","bordó"];
+const CONSIGNAS = [
+  {id:1,n:"El objeto X",  tipo:"foto", limite:"miércoles", d:"Fotografiá un objeto que sea predominantemente del color {COLOR}. Puede estar en cualquier lugar."},
+  {id:2,n:"El cielo",     tipo:"foto", limite:"sábado",    d:"Fotografiá el cielo en un atardecer."},
+  {id:3,n:"El recuerdo falso", tipo:"texto", limite:"miércoles", d:"Publicá un recuerdo compartido que nunca ocurrió, narrado como si fuera real."},
+  {id:4,n:"El número secreto", tipo:"texto", limite:"sábado", d:"Publicá un número del 1 al 100 con una pista críptica de por qué lo elegiste."},
+  {id:5,n:"El detalle",   tipo:"foto", limite:"miércoles", d:"Foto en macro/zoom de una textura o superficie, tan de cerca que no se reconozca qué es."},
+  {id:6,n:"El objeto ajeno", tipo:"foto", limite:"sábado", d:"Fotografiá algo que no te pertenece."},
+  {id:7,n:"La palabra del día", tipo:"texto", limite:"miércoles", d:"Publicá una palabra inventada con su definición."},
+  {id:8,n:"El lugar inusual", tipo:"foto", limite:"sábado", d:"Foto de un lugar al que no vas seguido, en cualquier parte."},
+  {id:9,n:"La pregunta sin respuesta", tipo:"texto", limite:"miércoles", d:"Publicá una pregunta filosófica o absurda sin contexto."},
+  {id:10,n:"El sonido",   tipo:"audio", limite:"sábado", d:"Grabá un sonido de tu entorno sin revelar qué es."},
+];
+
+/* ---------- State ---------- */
+let me=null, players=[], questions=[], gameState=null;
+let unsub=[];
+
+/* ---------- Helpers ---------- */
+const $=s=>document.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+async function hash(str){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");}
+
+async function uploadToCloudinary(file){
+  const fd=new FormData();
+  fd.append("file",file); fd.append("upload_preset",UPLOAD_PRESET);
+  const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,{method:"POST",body:fd});
+  if(!res.ok) throw new Error("Falló la subida");
+  const data=await res.json(); return data.secure_url;
+}
+
+/* ============ AUTH ============ */
+window.showRegister=()=>{$("#loginCard").classList.add("hidden");$("#regCard").classList.remove("hidden");};
+window.showLogin=()=>{$("#regCard").classList.add("hidden");$("#loginCard").classList.remove("hidden");};
+
+window.doRegister=async()=>{
+  const name=$("#rgName").value.trim(), user=$("#rgUser").value.trim().toLowerCase(), pass=$("#rgPass").value;
+  const photoFile=$("#rgPhoto").files[0];
+  if(!name||!user||!pass){toast("Completá nombre, usuario y contraseña");return;}
+  const btn=$("#rgBtn"); btn.disabled=true; btn.textContent="Creando…";
+  try{
+    const existing=await getDoc(doc(playersCol,user));
+    if(existing.exists()){toast("Ese usuario ya existe");btn.disabled=false;btn.textContent="Crear cuenta";return;}
+    let photoURL="";
+    if(photoFile) photoURL=await uploadToCloudinary(photoFile);
+    const all=await getDocs(playersCol);
+    const isFirst = all.empty;            // el primero en registrarse es admin
+    await setDoc(doc(playersCol,user),{
+      username:user, displayName:name, pass:await hash(pass),
+      photoURL, isAdmin:isFirst, points:0, createdAt:serverTimestamp()
+    });
+    if(isFirst) await seedIfNeeded();
+    toast(isFirst?"Cuenta admin creada 🎉":"Cuenta creada 🎉");
+    localStorage.setItem("topo_user",user);
+    await bootSession(user);
+  }catch(e){console.error(e);toast("Error: "+e.message);btn.disabled=false;btn.textContent="Crear cuenta";}
+};
+
+window.doLogin=async()=>{
+  const user=$("#liUser").value.trim().toLowerCase(), pass=$("#liPass").value;
+  if(!user||!pass){toast("Ingresá usuario y contraseña");return;}
+  const snap=await getDoc(doc(playersCol,user));
+  if(!snap.exists()){toast("Usuario no encontrado");return;}
+  if(snap.data().pass!==await hash(pass)){toast("Contraseña incorrecta");return;}
+  localStorage.setItem("topo_user",user);
+  await bootSession(user);
+};
+
+window.logout=()=>{localStorage.removeItem("topo_user");unsub.forEach(u=>u());location.reload();};
+
+async function seedIfNeeded(){
+  const qs=await getDocs(questionsCol);
+  if(!qs.empty) return;
+  const batch=writeBatch(db);
+  SEED_QUESTIONS.forEach((q,i)=>{
+    batch.set(doc(questionsCol), {text:q.t, options:q.o||["Sí","No"], answers:{}, order:i});
+  });
+  await batch.commit();
+}
+
+/* ============ SESSION ============ */
+async function bootSession(user){
+  const snap=await getDoc(doc(playersCol,user));
+  if(!snap.exists()){localStorage.removeItem("topo_user");return;}
+  me={id:snap.id,...snap.data()};
+  $("#auth").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  $("#meName").textContent=me.displayName;
+  $("#meAvatar").src=me.photoURL||defaultAvatar(me.displayName);
+  if(!me.isAdmin) $("#navAdmin").classList.add("hidden");
+
+  // realtime listeners
+  unsub.push(onSnapshot(playersCol,s=>{players=s.docs.map(d=>({id:d.id,...d.data()}));renderCurrent();}));
+  unsub.push(onSnapshot(questionsCol,s=>{questions=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));renderCurrent();}));
+  unsub.push(onSnapshot(stateDoc,s=>{gameState=s.exists()?s.data():null;renderCurrent();}));
+  go("home");
+}
+function defaultAvatar(name){
+  const l=(name||"?")[0].toUpperCase();
+  return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='%231e1e23'/><text x='50%25' y='54%25' font-size='34' fill='%23e63140' text-anchor='middle' dominant-baseline='middle' font-family='sans-serif'>${l}</text></svg>`;
+}
+
+/* ============ NAV ============ */
+let current="home";
+window.go=(v)=>{
+  current=v;
+  document.querySelectorAll(".view").forEach(x=>x.classList.add("hidden"));
+  $("#view-"+v).classList.remove("hidden");
+  document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.v===v));
+  renderCurrent();
+};
+function renderCurrent(){
+  if(!me) return;
+  if(current==="home") renderHome();
+  if(current==="topo") renderTopo();
+  if(current==="feed") renderFeed();
+  if(current==="vote") renderVote();
+  if(current==="admin") renderAdmin();
+}
+
+/* ============ HOME ============ */
+function renderHome(){
+  const v=$("#view-home"); v.innerHTML="";
+  const week=gameState?.week||0;
+  const status=gameState?.status||"idle";
+  const statusTxt={idle:"Sin semana activa",running:"Semana en curso",voting:"Votación abierta",closed:"Resultados listos"}[status];
+
+  const hero=el("div","card hero");
+  hero.innerHTML=`<div class="eyebrow">Semana ${week||"—"}</div>
+    <div class="big" style="margin:10px 0 6px">${statusTxt}</div>
+    <p class="muted" style="margin:0">${week?`Hay un topo entre ustedes. ${status==="voting"?"Ya podés votar.":"Seguí las pistas."}`:"Esperá a que el admin inicie la primera semana."}</p>`;
+  v.appendChild(hero);
+
+  // stats
+  const ranked=[...players].sort((a,b)=>(b.points||0)-(a.points||0));
+  const myPos=ranked.findIndex(p=>p.id===me.id)+1;
+  const row=el("div","row-2");
+  row.innerHTML=`<div class="stat"><div class="l">Tus puntos</div><div class="v">${me.points||0}</div></div>
+    <div class="stat"><div class="l">Tu posición</div><div class="v">#${myPos||"—"}</div></div>`;
+  v.appendChild(row);
+
+  // ranking
+  const rc=el("div","card");
+  rc.innerHTML=`<h3 style="margin-bottom:6px">Ranking general</h3>`;
+  ranked.forEach((p,i)=>{
+    const r=el("div","rank-row");
+    r.innerHTML=`<div class="rank-pos ${i<3?'top':''}">${i+1}</div>
+      <img class="avatar" style="width:38px;height:38px" src="${p.photoURL||defaultAvatar(p.displayName)}"/>
+      <div><div style="font-weight:700">${esc(p.displayName)}${p.id===me.id?' <span class="muted">(vos)</span>':''}</div></div>
+      <div class="rank-pts">${p.points||0}</div>`;
+    rc.appendChild(r);
+  });
+  if(!ranked.length) rc.appendChild(el("p","muted","Todavía no hay jugadores."));
+  v.appendChild(rc);
+
+  const out=el("button","btn btn-ghost btn-block","Cerrar sesión");
+  out.onclick=window.logout; v.appendChild(out);
+}
+
+/* ============ TOPO (vista privada) ============ */
+function renderTopo(){
+  const v=$("#view-topo"); v.innerHTML="";
+  const amTopo = gameState?.topoId===me.id && gameState?.status!=="closed" && gameState?.status!=="idle";
+  if(!gameState||gameState.status==="idle"){
+    v.appendChild(empty("🕵️","Sin semana activa","Cuando arranque la semana vas a ver acá si te toca ser el topo."));
+    return;
+  }
+  if(!amTopo){
+    v.appendChild(empty("🤫","No sos el topo esta semana","O al menos… eso es lo que querés que crean. Mirá las pistas y preparate para votar."));
+    return;
+  }
+  const head=el("div","card red");
+  head.innerHTML=`<div class="eyebrow" style="color:#ffd9dc">Confidencial · Semana ${gameState.week}</div>
+    <div class="big" style="margin:8px 0">Sos el Topo 🕵️</div>
+    <p style="margin:0;color:#ffe5e7">Cumplí tus dos consignas sin delatarte. Subí cada una acá; aparecen en Pistas de forma anónima.</p>`;
+  v.appendChild(head);
+
+  (gameState.consignas||[]).forEach((cid,idx)=>{
+    const c=CONSIGNAS.find(x=>x.id===cid); if(!c) return;
+    const desc=c.d.replace("{COLOR}", gameState.color||"—");
+    const done=(gameState.topoSubs||{})[cid];
+    const card=el("div","card");
+    card.innerHTML=`<div class="eyebrow">Consigna ${idx+1} · límite ${c.limite}</div>
+      <h3 style="margin:6px 0">${c.n}</h3>
+      <p class="muted" style="margin:0 0 12px">${esc(desc)}</p>
+      <span class="pill ${done?'red':''}">${done?'✓ Publicada':c.tipo.toUpperCase()}</span>`;
+    if(!done){
+      if(c.tipo==="texto"){
+        const ta=el("textarea"); ta.placeholder="Escribí tu publicación…";
+        const b=el("button","btn btn-primary btn-block","Publicar");
+        b.onclick=async()=>{if(!ta.value.trim())return toast("Escribí algo");b.disabled=true;b.textContent="Publicando…";
+          await publishSub(cid,{tipo:"texto",text:ta.value.trim()});};
+        card.appendChild(ta);card.appendChild(b);
+      }else{
+        const inp=el("input");inp.type="file";inp.accept=c.tipo==="audio"?"audio/*":"image/*";
+        const b=el("button","btn btn-primary btn-block","Subir y publicar");
+        b.onclick=async()=>{const f=inp.files[0];if(!f)return toast("Elegí un archivo");b.disabled=true;b.textContent="Subiendo…";
+          try{const url=await uploadToCloudinary(f);await publishSub(cid,{tipo:c.tipo,url});}
+          catch(e){toast("Error al subir");b.disabled=false;b.textContent="Subir y publicar";}};
+        card.appendChild(inp);card.appendChild(b);
+      }
+    }
+    v.appendChild(card);
+  });
+}
+async function publishSub(cid,data){
+  await addDoc(subsCol,{week:gameState.week,consignaId:cid,...data,createdAt:serverTimestamp()});
+  await updateDoc(stateDoc,{[`topoSubs.${cid}`]:true});
+  toast("Publicado ✓");
+}
+
+/* ============ FEED (pistas anónimas) ============ */
+let feedUnsub=null;
+function renderFeed(){
+  const v=$("#view-feed"); v.innerHTML="";
+  if(!gameState||gameState.status==="idle"){v.appendChild(empty("📸","Sin pistas aún","Cuando el topo publique sus consignas van a aparecer acá."));return;}
+  v.appendChild(el("h3","",`Pistas · Semana ${gameState.week}`));
+  v.appendChild(el("p","muted","Estas son las consignas del topo. Estudialas: te van a ayudar a descubrirlo."));
+  const cont=el("div"); v.appendChild(cont);
+  if(feedUnsub)feedUnsub();
+  feedUnsub=onSnapshot(query(subsCol,where("week","==",gameState.week)),s=>{
+    cont.innerHTML="";
+    const items=s.docs.map(d=>d.data()).sort((a,b)=>(a.consignaId)-(b.consignaId));
+    if(!items.length){cont.appendChild(empty("⏳","Todavía nada","El topo aún no publicó."));return;}
+    items.forEach(it=>{
+      const c=CONSIGNAS.find(x=>x.id===it.consignaId);
+      const fi=el("div","feed-item");
+      let inner="";
+      if(it.tipo==="texto"){inner=`<div class="body"><div class="eyebrow">${esc(c?.n||"Consigna")}</div><p style="margin:8px 0 0">${esc(it.text)}</p></div>`;}
+      else if(it.tipo==="audio"){inner=`<div class="body"><div class="eyebrow">${esc(c?.n||"Consigna")}</div><audio controls src="${it.url}"></audio></div>`;}
+      else{inner=`<img src="${it.url}"/><div class="body"><div class="eyebrow">${esc(c?.n||"Consigna")}</div></div>`;}
+      fi.innerHTML=inner; cont.appendChild(fi);
+    });
+  });
+}
+
+/* ============ VOTE (cuestionario con timer) ============ */
+let voteTimer=null;
+function renderVote(){
+  const v=$("#view-vote"); v.innerHTML="";
+  if(!gameState||gameState.status!=="voting"){
+    v.appendChild(empty("🗳️","Votación cerrada","Solo podés responder el cuestionario cuando el admin abre la votación (sábado/domingo)."));
+    return;
+  }
+  if(gameState.topoId===me.id){
+    v.appendChild(empty("🙊","Sos el topo","Esta semana no respondés el cuestionario. Esperá los resultados."));
+    return;
+  }
+  // ya respondió?
+  getDocs(query(respCol,where("week","==",gameState.week),where("playerId","==",me.id))).then(s=>{
+    if(!s.empty){v.innerHTML="";v.appendChild(empty("✅","Ya respondiste","Tu cuestionario quedó guardado. Mirá el ranking cuando se cierre la semana."));return;}
+    startQuiz(v);
+  });
+}
+function startQuiz(v){
+  const qIds=gameState.weeklyQuestions||[];
+  const weekQs=qIds.map(id=>questions.find(q=>q.id===id)).filter(Boolean);
+  // pregunta final de identidad
+  const others=players.filter(p=>p.id!==me.id);
+  let idx=0, answers={};
+  const TOTAL=weekQs.length+1, START=Date.now(), LIMIT=120000;
+
+  const card=el("div","card");
+  const timerEl=el("div","timer","2:00");
+  const prog=el("div","qprogress","<i style='width:0%'></i>");
+  const body=el("div");
+  card.appendChild(timerEl);card.appendChild(prog);card.appendChild(body);
+  v.appendChild(card);
+
+  function tick(){
+    const left=Math.max(0,LIMIT-(Date.now()-START));
+    const s=Math.ceil(left/1000);
+    timerEl.textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+    timerEl.classList.toggle("warn",s<=30);
+    if(left<=0){clearInterval(voteTimer);finish(true);}
+  }
+  clearInterval(voteTimer); voteTimer=setInterval(tick,250); tick();
+
+  function paint(){
+    prog.firstChild.style.width=`${(idx/TOTAL)*100}%`;
+    body.innerHTML="";
+    if(idx<weekQs.length){
+      const q=weekQs[idx];
+      body.appendChild(el("div","eyebrow",`Pregunta ${idx+1} de ${TOTAL}`));
+      body.appendChild(el("h3","",`<div style="margin:10px 0 16px">${esc(q.text)}</div>`));
+      (q.options||["Sí","No"]).forEach(opt=>{
+        const b=el("button","opt"+(answers[q.id]===opt?" sel":""),esc(opt));
+        b.onclick=()=>{answers[q.id]=opt;idx++;next();};
+        body.appendChild(b);
+      });
+    }else{
+      // identidad
+      body.appendChild(el("div","eyebrow",`Pregunta ${TOTAL} de ${TOTAL}`));
+      body.appendChild(el("h3","",`<div style="margin:10px 0 16px">¿Quién es el topo?</div>`));
+      others.forEach(p=>{
+        const b=el("button","opt opt-photo"+(answers.__identity===p.id?" sel":""),
+          `<img src="${p.photoURL||defaultAvatar(p.displayName)}"/><span>${esc(p.displayName)}</span>`);
+        b.onclick=()=>{answers.__identity=p.id;idx++;next();};
+        body.appendChild(b);
+      });
+    }
+  }
+  function next(){ if(idx>=TOTAL){clearInterval(voteTimer);finish(false);} else paint(); }
+  async function finish(timedOut){
+    body.innerHTML=`<div class="spinner"></div><p class="center muted">Guardando…</p>`;
+    let correct=0;
+    weekQs.forEach(q=>{ const corr=(q.answers||{})[gameState.topoId]; if(corr&&answers[q.id]===corr) correct++; });
+    const gotIdentity = answers.__identity===gameState.topoId;
+    if(gotIdentity) correct++;
+    await addDoc(respCol,{week:gameState.week,playerId:me.id,answers,correct,gotIdentity,timedOut,createdAt:serverTimestamp()});
+    await updateDoc(doc(playersCol,me.id),{points:(me.points||0)+correct});
+    card.innerHTML=`<div class="center" style="padding:20px 0">
+      <div style="font-size:46px">🎯</div>
+      <h2 style="margin:10px 0">¡Listo!</h2>
+      <p class="muted">Acertaste <b class="red">${correct}</b> de ${TOTAL}.</p>
+      <p class="muted">${gotIdentity?"Y descubriste al topo 🕵️":"No diste con el topo esta vez."}</p></div>`;
+  }
+  paint();
+}
+
+/* ============ ADMIN ============ */
+function renderAdmin(){
+  const v=$("#view-admin"); v.innerHTML="";
+  if(!me.isAdmin){v.appendChild(empty("🔒","Solo admin","Esta sección no está disponible para tu cuenta."));return;}
+
+  // --- control de semana ---
+  const ctrl=el("div","card");
+  ctrl.innerHTML=`<h3 style="margin-bottom:4px">Control de la semana</h3>
+    <p class="muted" style="margin:0 0 12px">Estado: <b>${gameState?.status||"idle"}</b> · Semana ${gameState?.week||0}</p>`;
+  const status=gameState?.status||"idle";
+  if(status==="idle"||status==="closed"){
+    const b=el("button","btn btn-primary","🎲 Iniciar nueva semana");
+    b.onclick=startWeek; ctrl.appendChild(b);
+  }
+  if(status==="running"){
+    const b=el("button","btn btn-primary","🗳️ Abrir votación");
+    b.onclick=async()=>{await updateDoc(stateDoc,{status:"voting"});toast("Votación abierta");};
+    ctrl.appendChild(b);
+  }
+  if(status==="voting"){
+    const b=el("button","btn btn-primary","🏁 Cerrar semana y calcular");
+    b.onclick=closeWeek; ctrl.appendChild(b);
+  }
+  if(gameState?.topoId){
+    const topo=players.find(p=>p.id===gameState.topoId);
+    ctrl.appendChild(el("p","muted",`<div style="margin-top:12px">Topo actual: <b class="red">${esc(topo?.displayName||"?")}</b></div>`));
+  }
+  v.appendChild(ctrl);
+
+  // --- jugadores ---
+  const pc=el("div","card");
+  pc.innerHTML=`<h3 style="margin-bottom:6px">Jugadores (${players.length})</h3>`;
+  players.forEach(p=>{
+    const r=el("div","rank-row");
+    r.innerHTML=`<img class="avatar" style="width:36px;height:36px" src="${p.photoURL||defaultAvatar(p.displayName)}"/>
+      <div style="flex:1"><b>${esc(p.displayName)}</b> <span class="muted">@${esc(p.username)}</span>
+      ${p.isAdmin?'<span class="pill red" style="margin-left:6px">admin</span>':''}</div>`;
+    pc.appendChild(r);
+  });
+  v.appendChild(pc);
+
+  // --- banco de preguntas + grilla ---
+  const qc=el("div","card");
+  qc.innerHTML=`<h3 style="margin-bottom:4px">Banco de preguntas (${questions.length})</h3>
+    <p class="muted" style="margin:0 0 12px">Para cada pregunta, marcá la respuesta correcta de cada jugador (qué pasaría si esa persona fuera el topo).</p>`;
+  questions.forEach(q=>{
+    const g=el("div","grid-q");
+    g.innerHTML=`<div class="qtxt">${esc(q.text)}</div>`;
+    players.forEach(p=>{
+      const row=el("div","grid-row");
+      const opts=(q.options||["Sí","No"]).map(o=>`<option ${(q.answers||{})[p.id]===o?'selected':''}>${esc(o)}</option>`).join("");
+      row.innerHTML=`<span class="pn">${esc(p.displayName)}</span>`;
+      const sel=el("select",null,`<option value="">—</option>${opts}`);
+      sel.onchange=async()=>{await updateDoc(doc(questionsCol,q.id),{[`answers.${p.id}`]:sel.value});toast("Guardado ✓");};
+      row.appendChild(sel); g.appendChild(row);
+    });
+    const del=el("button","btn btn-ghost btn-sm","Eliminar pregunta");
+    del.style.marginTop="6px";
+    del.onclick=async()=>{if(confirm("¿Eliminar esta pregunta?")){await deleteDoc(doc(questionsCol,q.id));toast("Eliminada");}};
+    g.appendChild(del);
+    qc.appendChild(g);
+  });
+  v.appendChild(qc);
+
+  // --- agregar pregunta ---
+  const ac=el("div","card");
+  ac.innerHTML=`<h3 style="margin-bottom:8px">Agregar pregunta</h3>`;
+  const txt=el("input");txt.placeholder="Ej. ¿El topo sabe nadar?";
+  const opt=el("input");opt.placeholder="Opciones separadas por coma (default: Sí, No)";
+  const add=el("button","btn btn-primary btn-block","Agregar al banco");
+  add.onclick=async()=>{
+    if(!txt.value.trim())return toast("Escribí la pregunta");
+    const options=opt.value.trim()?opt.value.split(",").map(s=>s.trim()).filter(Boolean):["Sí","No"];
+    await addDoc(questionsCol,{text:txt.value.trim(),options,answers:{},order:questions.length});
+    txt.value="";opt.value="";toast("Pregunta agregada ✓");
+  };
+  ac.appendChild(txt);ac.appendChild(el("div","",'<div style="height:10px"></div>'));ac.appendChild(opt);ac.appendChild(add);
+  v.appendChild(ac);
+}
+
+async function startWeek(){
+  if(players.length<3){toast("Necesitás al menos 3 jugadores");return;}
+  if(questions.length<1){toast("Cargá preguntas primero");return;}
+  // topo al azar
+  const topo=players[Math.floor(Math.random()*players.length)];
+  // 2 consignas distintas
+  const pool=[...CONSIGNAS]; const c1=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+  const c2=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+  const color=COLORS[Math.floor(Math.random()*COLORS.length)];
+  // 19 preguntas al azar (o las que haya) — la identidad se agrega en el quiz
+  const shuffled=[...questions].sort(()=>Math.random()-0.5).slice(0,19).map(q=>q.id);
+  const week=(gameState?.week||0)+1;
+  await setDoc(stateDoc,{
+    week, status:"running", topoId:topo.id, color,
+    consignas:[c1.id,c2.id], weeklyQuestions:shuffled, topoSubs:{}, startedAt:serverTimestamp()
+  });
+  toast(`Semana ${week} iniciada 🎲`);
+}
+
+async function closeWeek(){
+  // traer respuestas
+  const s=await getDocs(query(respCol,where("week","==",gameState.week)));
+  const resp=s.docs.map(d=>d.data());
+  const corrects=resp.map(r=>r.correct||0);
+  const avg=corrects.length?corrects.reduce((a,b)=>a+b,0)/corrects.length:0;
+  const topoPts=Math.max(0,Math.floor(20-avg));
+  // sumar al topo
+  const topo=players.find(p=>p.id===gameState.topoId);
+  if(topo) await updateDoc(doc(playersCol,topo.id),{points:(topo.points||0)+topoPts});
+  await updateDoc(stateDoc,{status:"closed",topoPoints:topoPts,avgCorrect:Math.round(avg*10)/10});
+  const found=resp.filter(r=>r.gotIdentity).length;
+  toast(`Cerrada. Topo +${topoPts} pts · ${found}/${resp.length} lo descubrieron`);
+}
+
+/* ---------- empty state ---------- */
+function empty(icon,title,sub){
+  const e=el("div","card center");
+  e.innerHTML=`<div style="font-size:42px;margin-bottom:6px">${icon}</div>
+    <h3 style="margin-bottom:6px">${title}</h3><p class="muted" style="margin:0">${sub}</p>`;
+  return e;
+}
+
+/* ---------- auto-login ---------- */
+const saved=localStorage.getItem("topo_user");
+if(saved) bootSession(saved).catch(()=>localStorage.removeItem("topo_user"));
+</script>
+</body>
+</html>
