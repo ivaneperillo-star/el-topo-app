@@ -471,14 +471,33 @@ function renderFeed(){
   const w=currentWeek();
   if(!w){v.appendChild(empty("📸","Sin pistas aún","Cuando arranque la semana van a aparecer acá."));return;}
   v.appendChild(el("h3","",`Pistas · semana del ${new Date(w.anchor).toLocaleDateString("es-AR")}`));
-  v.appendChild(el("p","muted","Estas son las consignas del topo. Estudialas: te van a ayudar a descubrirlo."));
-  const items=subs.filter(s=>s.week===w.id).sort((a,b)=>a.consignaId-b.consignaId);
-  if(!items.length){v.appendChild(empty("⏳","Todavía nada","El topo aún no publicó."));return;}
-  items.forEach(it=>{const c=CONSIGNAS.find(x=>x.id===it.consignaId);const fi=el("div","feed-item");
-    if(it.tipo==="texto")fi.innerHTML=`<div class="body"><div class="eyebrow">${esc(c?.n||"")}</div><p style="margin:8px 0 0">${esc(it.text)}</p></div>`;
-    else if(it.tipo==="audio")fi.innerHTML=`<div class="body"><div class="eyebrow">${esc(c?.n||"")}</div><audio controls src="${it.url}"></audio></div>`;
-    else fi.innerHTML=`<img src="${it.url}"/><div class="body"><div class="eyebrow">${esc(c?.n||"")}</div></div>`;
-    v.appendChild(fi);});
+  v.appendChild(el("p","muted","Las consignas se revelan en su horario. Estudialas: te van a ayudar a descubrir al topo."));
+  const anchor=new Date(w.anchor);const {wed,sat}=bounds(anchor);const now=new Date();
+  const amTopo=w.topoId===me.id;
+  (w.consignas||[]).forEach((cid,idx)=>{
+    const c=CONSIGNAS.find(x=>x.id===cid);
+    const reveal=idx===0?wed:sat;
+    const visible = amTopo || now>=reveal;      // el topo siempre ve lo suyo; los demás, recién a la hora
+    const its=subs.filter(s=>s.week===w.id && s.consignaId===cid);
+    if(!visible){
+      const lk=el("div","feed-item");
+      lk.innerHTML=`<div class="body center" style="padding:26px 14px">
+        <div style="font-size:30px">🔒</div>
+        <div class="eyebrow" style="margin-top:8px">Consigna ${idx+1}</div>
+        <p class="muted" style="margin:8px 0 0">Se revela el <b style="color:#fff">${fmtDate(reveal)}</b></p></div>`;
+      v.appendChild(lk);return;
+    }
+    if(!its.length){
+      const e=el("div","feed-item");
+      e.innerHTML=`<div class="body"><div class="eyebrow">Consigna ${idx+1} · ${esc(c?.n||"")}</div><p class="muted" style="margin:8px 0 0">El topo no llegó a publicar esta consigna.</p></div>`;
+      v.appendChild(e);return;
+    }
+    its.forEach(it=>{const fi=el("div","feed-item");
+      if(it.tipo==="texto")fi.innerHTML=`<div class="body"><div class="eyebrow">Consigna ${idx+1} · ${esc(c?.n||"")}</div><p style="margin:8px 0 0">${esc(it.text)}</p></div>`;
+      else if(it.tipo==="audio")fi.innerHTML=`<div class="body"><div class="eyebrow">Consigna ${idx+1} · ${esc(c?.n||"")}</div><audio controls src="${it.url}"></audio></div>`;
+      else fi.innerHTML=`<img src="${it.url}"/><div class="body"><div class="eyebrow">Consigna ${idx+1} · ${esc(c?.n||"")}</div></div>`;
+      v.appendChild(fi);});
+  });
 }
 
 /* ============ VOTE ============ */
