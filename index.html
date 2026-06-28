@@ -130,14 +130,14 @@
 <div id="auth" class="wrap" style="padding-top:60px">
   <div class="center" style="margin-bottom:30px">
     <div style="font-size:54px">🕵️</div>
-    <h1 style="font-size:38px;margin-top:8px">EL TOPO</h1>
+    <h1 style="font-size:38px;margin-top:8px">El Topo</h1>
     <p class="muted">Descubrí quién es. Cada semana.</p>
   </div>
 
   <div class="card" id="loginCard">
     <h3 style="margin-bottom:6px">Iniciar sesión</h3>
     <label class="fl">Usuario</label>
-    <input id="liUser" autocapitalize="none" autocomplete="username" placeholder="Tu usuario" />
+    <input id="liUser" autocapitalize="none" autocomplete="username" placeholder="tu usuario" />
     <label class="fl">Contraseña</label>
     <input id="liPass" type="password" autocomplete="current-password" placeholder="••••••" />
     <button class="btn btn-primary btn-block" onclick="doLogin()">Entrar</button>
@@ -413,7 +413,7 @@ function renderHome(){
 function renderTopo(){
   const v=$("#view-topo"); v.innerHTML="";
   const amTopo = gameState?.topoId===me.id && gameState?.status!=="closed" && gameState?.status!=="idle";
-  if(!gameState||gameState.status==="No iniciada"){
+  if(!gameState||gameState.status==="idle"){
     v.appendChild(empty("🕵️","Sin semana activa","Cuando arranque la semana vas a ver acá si te toca ser el topo."));
     return;
   }
