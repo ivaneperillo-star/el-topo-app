@@ -99,8 +99,10 @@
     <input id="liUser" autocapitalize="none" autocomplete="username" placeholder="tu usuario" />
     <label class="fl">Contraseña</label>
     <input id="liPass" type="password" autocomplete="current-password" placeholder="••••••" />
-    <button class="btn btn-primary btn-block" onclick="doLogin()">Entrar</button>
-    <p class="center muted" style="margin:16px 0 0;font-size:14px">¿No tenés cuenta?
+    <button class="btn btn-primary btn-block" id="liBtn" onclick="doLogin()">Entrar</button>
+    <p class="center muted" style="margin:14px 0 0;font-size:14px">
+      <a href="#" onclick="showRecover();return false" class="red" style="text-decoration:none;font-weight:700">¿Olvidaste tu contraseña?</a></p>
+    <p class="center muted" style="margin:10px 0 0;font-size:14px">¿No tenés cuenta?
       <a href="#" onclick="showRegister();return false" class="red" style="text-decoration:none;font-weight:700">Registrate</a></p>
   </div>
   <div class="card hidden" id="regCard">
@@ -111,11 +113,38 @@
     <input id="rgUser" autocapitalize="none" placeholder="elegí un usuario" />
     <label class="fl">Contraseña</label>
     <input id="rgPass" type="password" placeholder="••••••" />
+    <label class="fl">Pregunta de seguridad (para recuperar tu cuenta)</label>
+    <select id="rgSecQ">
+      <option value="¿Cuál es el nombre de tu primera mascota?">¿Cuál es el nombre de tu primera mascota?</option>
+      <option value="¿En qué ciudad naciste?">¿En qué ciudad naciste?</option>
+      <option value="¿Cuál es tu comida favorita?">¿Cuál es tu comida favorita?</option>
+      <option value="¿Cómo se llamaba tu mejor amigo/a de la infancia?">¿Cómo se llamaba tu mejor amigo/a de la infancia?</option>
+      <option value="¿Cuál es tu apodo familiar?">¿Cuál es tu apodo familiar?</option>
+    </select>
+    <label class="fl">Respuesta secreta</label>
+    <input id="rgSecA" autocapitalize="none" placeholder="tu respuesta" />
     <label class="fl">Foto de perfil (para la votación)</label>
     <input id="rgPhoto" type="file" accept="image/*" />
     <button class="btn btn-primary btn-block" id="rgBtn" onclick="doRegister()">Crear cuenta</button>
     <p class="center muted" style="margin:16px 0 0;font-size:14px">¿Ya tenés cuenta?
       <a href="#" onclick="showLogin();return false" class="red" style="text-decoration:none;font-weight:700">Iniciá sesión</a></p>
+  </div>
+  <div class="card hidden" id="recoverCard">
+    <h3 style="margin-bottom:6px">Recuperar contraseña</h3>
+    <p class="muted" style="margin:0 0 4px;font-size:13px">Ingresá tu usuario y respondé tu pregunta de seguridad para elegir una nueva contraseña.</p>
+    <label class="fl">Usuario</label>
+    <input id="rcUser" autocapitalize="none" placeholder="tu usuario" />
+    <div id="rcStep2" class="hidden">
+      <label class="fl">Pregunta de seguridad</label>
+      <p id="rcQuestion" style="margin:0 0 6px;font-weight:600"></p>
+      <label class="fl">Tu respuesta</label>
+      <input id="rcAnswer" autocapitalize="none" placeholder="respuesta secreta" />
+      <label class="fl">Nueva contraseña</label>
+      <input id="rcNewPass" type="password" placeholder="••••••" />
+    </div>
+    <button class="btn btn-primary btn-block" id="rcBtn" onclick="recoverStep()">Continuar</button>
+    <p class="center muted" style="margin:16px 0 0;font-size:14px">
+      <a href="#" onclick="showLogin();return false" class="red" style="text-decoration:none;font-weight:700">Volver</a></p>
   </div>
 </div>
 
@@ -146,6 +175,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc,
   deleteDoc, query, where, onSnapshot, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -163,7 +193,15 @@ const CLOUD_NAME = "denvtixo2";
 const UPLOAD_PRESET = "el_topo_uploads";
 
 const fbApp = initializeApp(firebaseConfig);
-const db = getFirestore(fbApp, "iddefaultv1");
+let db;
+try{
+  db = initializeFirestore(fbApp, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  }, "iddefaultv1");
+}catch(e){
+  console.warn("Persistencia no disponible, usando getFirestore:", e);
+  db = getFirestore(fbApp, "iddefaultv1");
+}
 
 const ROOT = doc(db, "eltopo", "main");
 const playersCol  = collection(ROOT, "players");
@@ -212,12 +250,14 @@ const CONSIGNAS = [
 /* ---------- State ---------- */
 let me=null, players=[], questions=[], weeks=[], responses=[], subs=[];
 let unsub=[], ensuring=false, current="home";
+let topoRevealed=false; // control del ojo en admin
 
 /* ---------- Helpers ---------- */
 const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
 function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function normSec(s){return (s||"").trim().toLowerCase();}
 async function hash(str){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");}
 function defaultAvatar(name){const l=(name||"?")[0].toUpperCase();
   return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='%231e1e23'/><text x='50%25' y='54%25' font-size='34' fill='%23e63140' text-anchor='middle' dominant-baseline='middle' font-family='sans-serif'>${l}</text></svg>`;}
@@ -256,13 +296,20 @@ function currentWeek(){const id=weekIdOf(weekAnchor());return weeks.find(w=>w.id
 function fmtDate(ts){const d=new Date(ts);return d.toLocaleString("es-AR",{weekday:"short",hour:"2-digit",minute:"2-digit"});}
 
 /* ============ AUTH ============ */
-window.showRegister=()=>{$("#loginCard").classList.add("hidden");$("#regCard").classList.remove("hidden");};
-window.showLogin=()=>{$("#regCard").classList.add("hidden");$("#loginCard").classList.remove("hidden");};
+window.showRegister=()=>{$("#loginCard").classList.add("hidden");$("#recoverCard").classList.add("hidden");$("#regCard").classList.remove("hidden");};
+window.showLogin=()=>{$("#regCard").classList.add("hidden");$("#recoverCard").classList.add("hidden");$("#loginCard").classList.remove("hidden");};
+window.showRecover=()=>{
+  $("#loginCard").classList.add("hidden");$("#regCard").classList.add("hidden");$("#recoverCard").classList.remove("hidden");
+  $("#rcStep2").classList.add("hidden");$("#rcUser").value="";$("#rcAnswer").value="";$("#rcNewPass").value="";
+  $("#rcBtn").textContent="Continuar";rcFound=null;
+};
 
 window.doRegister=async()=>{
   const name=$("#rgName").value.trim(), user=$("#rgUser").value.trim().toLowerCase(), pass=$("#rgPass").value;
+  const secQ=$("#rgSecQ").value, secA=$("#rgSecA").value;
   const photoFile=$("#rgPhoto").files[0];
   if(!name||!user||!pass){toast("Completá nombre, usuario y contraseña");return;}
+  if(!secA.trim()){toast("Respondé tu pregunta de seguridad");return;}
   const btn=$("#rgBtn");btn.disabled=true;btn.textContent="Creando…";
   try{
     const dup=await getDocs(query(playersCol,where("username","==",user)));
@@ -273,7 +320,7 @@ window.doRegister=async()=>{
     const all=await getDocs(playersCol);
     const isFirst=all.empty;
     const uid=crypto.randomUUID();
-    await setDoc(doc(playersCol,uid),{uid,username:user,displayName:name,pass:await hash(pass),photoURL,isAdmin:isFirst,selfAnswers:{},createdAt:serverTimestamp()});
+    await setDoc(doc(playersCol,uid),{uid,username:user,displayName:name,pass:await hash(pass),secQ,secA:await hash(normSec(secA)),photoURL,isAdmin:isFirst,selfAnswers:{},createdAt:serverTimestamp()});
     localStorage.setItem("topo_uid",uid);
     toast(isFirst?"Cuenta admin creada 🎉":"Cuenta creada 🎉");
     await bootSession(uid);
@@ -282,13 +329,53 @@ window.doRegister=async()=>{
 window.doLogin=async()=>{
   const user=$("#liUser").value.trim().toLowerCase(), pass=$("#liPass").value;
   if(!user||!pass){toast("Ingresá usuario y contraseña");return;}
-  const s=await getDocs(query(playersCol,where("username","==",user)));
-  if(s.empty){toast("Usuario no encontrado");return;}
-  const d=s.docs[0];
-  if(d.data().pass!==await hash(pass)){toast("Contraseña incorrecta");return;}
-  localStorage.setItem("topo_uid",d.id);
-  await bootSession(d.id);
+  const btn=$("#liBtn");btn.disabled=true;btn.textContent="Entrando…";
+  try{
+    const s=await getDocs(query(playersCol,where("username","==",user)));
+    if(s.empty){toast("Usuario no encontrado");btn.disabled=false;btn.textContent="Entrar";return;}
+    const d=s.docs[0];
+    if(d.data().pass!==await hash(pass)){toast("Contraseña incorrecta");btn.disabled=false;btn.textContent="Entrar";return;}
+    localStorage.setItem("topo_uid",d.id);
+    await bootSession(d.id,{id:d.id,...d.data()});
+  }catch(e){console.error(e);toast("Error al entrar");btn.disabled=false;btn.textContent="Entrar";}
 };
+
+/* ---------- Recuperación de contraseña ---------- */
+let rcFound=null;
+window.recoverStep=async()=>{
+  const btn=$("#rcBtn");
+  if(!rcFound){
+    // paso 1: buscar usuario y mostrar su pregunta
+    const user=$("#rcUser").value.trim().toLowerCase();
+    if(!user){toast("Ingresá tu usuario");return;}
+    btn.disabled=true;btn.textContent="Buscando…";
+    try{
+      const s=await getDocs(query(playersCol,where("username","==",user)));
+      if(s.empty){toast("Usuario no encontrado");btn.disabled=false;btn.textContent="Continuar";return;}
+      const data={id:s.docs[0].id,...s.docs[0].data()};
+      if(!data.secQ||!data.secA){
+        toast("Esta cuenta no tiene pregunta de seguridad. Pedile al admin que te resetee la contraseña.");
+        btn.disabled=false;btn.textContent="Continuar";return;
+      }
+      rcFound=data;
+      $("#rcQuestion").textContent=data.secQ;
+      $("#rcStep2").classList.remove("hidden");
+      btn.textContent="Restablecer contraseña";btn.disabled=false;
+    }catch(e){console.error(e);toast("Error");btn.disabled=false;btn.textContent="Continuar";}
+  }else{
+    // paso 2: validar respuesta y setear nueva pass
+    const ans=$("#rcAnswer").value, np=$("#rcNewPass").value;
+    if(!ans.trim()||!np){toast("Completá la respuesta y la nueva contraseña");return;}
+    btn.disabled=true;btn.textContent="Validando…";
+    try{
+      if(rcFound.secA!==await hash(normSec(ans))){toast("Respuesta incorrecta");btn.disabled=false;btn.textContent="Restablecer contraseña";return;}
+      await updateDoc(doc(playersCol,rcFound.id),{pass:await hash(np)});
+      toast("Contraseña actualizada ✓ Ya podés entrar.");
+      rcFound=null;showLogin();
+    }catch(e){console.error(e);toast("Error");btn.disabled=false;btn.textContent="Restablecer contraseña";}
+  }
+};
+
 window.logout=()=>{localStorage.removeItem("topo_uid");unsub.forEach(u=>{try{u();}catch(e){}});location.reload();};
 
 async function seedIfNeeded(){
@@ -300,20 +387,25 @@ async function seedIfNeeded(){
 }
 
 /* ============ SESSION ============ */
-async function bootSession(uid){
-  const snap=await getDoc(doc(playersCol,uid));
-  if(!snap.exists()){localStorage.removeItem("topo_uid");return;}
-  me={id:snap.id,...snap.data()};
+async function bootSession(uid,preloaded){
+  let data=preloaded;
+  if(!data){
+    const snap=await getDoc(doc(playersCol,uid));
+    if(!snap.exists()){localStorage.removeItem("topo_uid");return;}
+    data={id:snap.id,...snap.data()};
+  }
+  me=data;
   $("#auth").classList.add("hidden");$("#app").classList.remove("hidden");
   refreshMeHeader();
   if(me.isAdmin) $("#navAdmin").classList.remove("hidden");
-  unsub.push(onSnapshot(playersCol,s=>{players=s.docs.map(d=>({id:d.id,...d.data()}));const m=players.find(p=>p.id===me.id);if(m)me=m;refreshMeHeader();afterData();}));
+  go("home");
+  unsub.push(onSnapshot(playersCol,s=>{players=s.docs.map(d=>({id:d.id,...d.data()}));const m=players.find(p=>p.id===me.id);if(m){const wasAdmin=me.isAdmin;me=m;if(me.isAdmin&&!wasAdmin)$("#navAdmin").classList.remove("hidden");}else{ // mi cuenta fue eliminada por el admin
+    toast("Tu cuenta fue eliminada");setTimeout(()=>window.logout(),1500);return;}refreshMeHeader();afterData();}));
   unsub.push(onSnapshot(questionsCol,s=>{questions=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));afterData();}));
   unsub.push(onSnapshot(weeksCol,s=>{weeks=s.docs.map(d=>({id:d.id,...d.data()}));afterData();}));
   unsub.push(onSnapshot(respCol,s=>{responses=s.docs.map(d=>({id:d.id,...d.data()}));afterData();}));
   unsub.push(onSnapshot(subsCol,s=>{subs=s.docs.map(d=>({id:d.id,...d.data()}));renderCurrent();}));
   setInterval(()=>{ensureWeek();renderCurrent();},30000);
-  go("home");
 }
 function refreshMeHeader(){if(!me)return;$("#meName").textContent=me.displayName;$("#meAvatar").src=me.photoURL||defaultAvatar(me.displayName);}
 function afterData(){ensureWeek();renderCurrent();}
@@ -345,12 +437,10 @@ async function ensureWeek(){
 /* ============ RANKING (calculado en vivo) ============ */
 function computeRanking(){
   const map={};players.forEach(p=>map[p.id]={player:p,pts:0});
-  // aciertos de cada participante
   responses.forEach(r=>{if(map[r.playerId])map[r.playerId].pts+=(r.correct||0);});
-  // bonus del topo en semanas ya cerradas
   weeks.forEach(w=>{
     const anchor=new Date(w.anchor);const {sunClose}=bounds(anchor);
-    if(new Date()<sunClose) return; // semana no cerrada
+    if(new Date()<sunClose) return;
     const parts=responses.filter(r=>r.week===w.id && r.playerId!==w.topoId);
     const avg=parts.length?parts.reduce((a,b)=>a+(b.correct||0),0)/parts.length:0;
     const bonus=Math.max(0,Math.floor(20-avg));
@@ -477,7 +567,7 @@ function renderFeed(){
   (w.consignas||[]).forEach((cid,idx)=>{
     const c=CONSIGNAS.find(x=>x.id===cid);
     const reveal=idx===0?wed:sat;
-    const visible = amTopo || now>=reveal;      // el topo siempre ve lo suyo; los demás, recién a la hora
+    const visible = amTopo || now>=reveal;
     const its=subs.filter(s=>s.week===w.id && s.consignaId===cid);
     if(!visible){
       const lk=el("div","feed-item");
@@ -552,7 +642,6 @@ function startQuiz(v,w){
 /* ============ PERFIL ============ */
 function renderPerfil(){
   const v=$("#view-perfil");v.innerHTML="";
-  // datos
   const card=el("div","card center");
   card.innerHTML=`<img class="avatar" style="width:88px;height:88px;margin-bottom:10px" src="${me.photoURL||defaultAvatar(me.displayName)}"/>
     <h2 style="margin-bottom:2px">${esc(me.displayName)}</h2><p class="muted" style="margin:0">@${esc(me.username)}</p>`;
@@ -587,6 +676,23 @@ function renderPerfil(){
   };
   cred.appendChild(save);v.appendChild(cred);
 
+  // Pregunta de seguridad
+  const sec=el("div","card");
+  sec.innerHTML=`<h3 style="margin-bottom:6px">Pregunta de seguridad</h3>
+    <p class="muted" style="margin:0 0 4px;font-size:13px">${me.secQ?"Se usa para recuperar tu cuenta si olvidás la contraseña.":"⚠️ No tenés una configurada. Sin ella no vas a poder recuperar tu cuenta solo."}</p>`;
+  sec.appendChild(el("label","fl","Pregunta"));
+  const selQ=el("select",null,["¿Cuál es el nombre de tu primera mascota?","¿En qué ciudad naciste?","¿Cuál es tu comida favorita?","¿Cómo se llamaba tu mejor amigo/a de la infancia?","¿Cuál es tu apodo familiar?"].map(q=>`<option ${me.secQ===q?"selected":""}>${q}</option>`).join(""));
+  sec.appendChild(selQ);
+  sec.appendChild(el("label","fl","Respuesta secreta"));
+  const inSecA=el("input");inSecA.autocapitalize="none";inSecA.placeholder=me.secQ?"escribí para cambiarla":"tu respuesta";sec.appendChild(inSecA);
+  const saveSec=el("button","btn btn-primary btn-block","Guardar pregunta de seguridad");
+  saveSec.onclick=async()=>{
+    if(!inSecA.value.trim())return toast("Escribí la respuesta secreta");
+    await updateDoc(doc(playersCol,me.id),{secQ:selQ.value,secA:await hash(normSec(inSecA.value))});
+    toast("Pregunta de seguridad guardada ✓");inSecA.value="";
+  };
+  sec.appendChild(saveSec);v.appendChild(sec);
+
   // Sesión / cuenta
   const acc=el("div","card");
   const out=el("button","btn btn-ghost btn-block","Cerrar sesión");out.onclick=window.logout;
@@ -607,20 +713,85 @@ function renderAdmin(){
 
   // control de semana
   const w=currentWeek();const phase=phaseOf(weekAnchor());
+  const topoName=w?esc(players.find(p=>p.id===w.topoId)?.displayName||"?"):null;
   const ctrl=el("div","card");
   ctrl.innerHTML=`<h3 style="margin-bottom:4px">Control de la semana</h3>
-    <p class="muted" style="margin:0 0 12px">Fase actual: <b>${phase}</b>${w?` · topo: <b class="red">${esc(players.find(p=>p.id===w.topoId)?.displayName||"?")}</b>`:""}</p>
-    <p class="muted" style="margin:0 0 12px;font-size:13px">El juego avanza solo por calendario. Usá esto solo si querés reiniciar la semana en curso (nuevo topo y consignas al azar). Se borran las publicaciones y votos de esta semana.</p>`;
+    <p class="muted" style="margin:0 0 4px">Fase actual: <b>${phase}</b></p>`;
+  if(w){
+    const topoLine=el("p","muted");topoLine.style.margin="0 0 12px";
+    const eyeBtn=el("button","btn btn-ghost btn-sm",topoRevealed?"🙈 Ocultar":"👁️ Ver topo");
+    eyeBtn.style.marginRight="8px";
+    const nameSpan=el("span",null,topoRevealed?`Topo: <b class="red">${topoName}</b>`:'Topo: <b class="red">•••••••</b>');
+    eyeBtn.onclick=()=>{topoRevealed=!topoRevealed;renderAdmin();};
+    topoLine.appendChild(eyeBtn);topoLine.appendChild(nameSpan);
+    ctrl.appendChild(topoLine);
+  }
+  const note=el("p","muted");note.style.cssText="margin:0 0 12px;font-size:13px";
+  note.textContent="El juego avanza solo por calendario. Usá esto solo si querés reiniciar la semana en curso (nuevo topo y consignas al azar). Se borran las publicaciones y votos de esta semana.";
+  ctrl.appendChild(note);
   const force=el("button","btn btn-primary","🎲 Forzar nueva semana ahora");
   force.onclick=()=>forceNewWeek();ctrl.appendChild(force);
   v.appendChild(ctrl);
 
-  // jugadores
-  const pc=el("div","card");pc.innerHTML=`<h3 style="margin-bottom:6px">Jugadores (${players.length})</h3>`;
-  players.forEach(p=>{const r=el("div","rank-row");
-    r.innerHTML=`<img class="avatar" style="width:36px;height:36px" src="${p.photoURL||defaultAvatar(p.displayName)}"/>
-      <div style="flex:1"><b>${esc(p.displayName)}</b> <span class="muted">@${esc(p.username)}</span>${p.isAdmin?' <span class="pill red" style="margin-left:4px">admin</span>':''}</div>`;
-    pc.appendChild(r);});
+  // jugadores (gestión completa)
+  const pc=el("div","card");pc.innerHTML=`<h3 style="margin-bottom:6px">Jugadores (${players.length})</h3>
+    <p class="muted" style="margin:0 0 10px;font-size:13px">Editá usuario, reseteá contraseña o eliminá cuentas.</p>`;
+  players.forEach(p=>{
+    const box=el("div","grid-q");
+    const head=el("div","",`<div style="display:flex;align-items:center;gap:10px">
+      <img class="avatar" style="width:36px;height:36px" src="${p.photoURL||defaultAvatar(p.displayName)}"/>
+      <div style="flex:1"><b>${esc(p.displayName)}</b> <span class="muted">@${esc(p.username)}</span>${p.isAdmin?' <span class="pill red" style="margin-left:4px">admin</span>':''}${p.id===me.id?' <span class="muted">(vos)</span>':''}</div>
+    </div>`);
+    box.appendChild(head);
+
+    // acciones
+    const actions=el("div");actions.style.marginTop="12px";
+
+    // editar usuario / nombre
+    actions.appendChild(el("label","fl","Nombre para mostrar"));
+    const inName=el("input");inName.value=p.displayName;actions.appendChild(inName);
+    actions.appendChild(el("label","fl","Usuario"));
+    const inUser=el("input");inUser.value=p.username;inUser.autocapitalize="none";actions.appendChild(inUser);
+    const saveInfo=el("button","btn btn-ghost btn-sm","Guardar usuario/nombre");saveInfo.style.marginTop="10px";
+    saveInfo.onclick=async()=>{
+      const nn=inName.value.trim(),nu=inUser.value.trim().toLowerCase();
+      if(!nn||!nu)return toast("Nombre y usuario no pueden quedar vacíos");
+      if(nu!==p.username){const dup=await getDocs(query(playersCol,where("username","==",nu)));if(!dup.empty)return toast("Ese usuario ya está tomado");}
+      await updateDoc(doc(playersCol,p.id),{displayName:nn,username:nu});toast("Actualizado ✓");
+    };
+    actions.appendChild(saveInfo);
+
+    // resetear contraseña
+    actions.appendChild(el("label","fl","Nueva contraseña para este jugador"));
+    const inPass=el("input");inPass.type="text";inPass.placeholder="escribí la nueva contraseña";actions.appendChild(inPass);
+    const resetBtn=el("button","btn btn-ghost btn-sm","🔑 Resetear contraseña");resetBtn.style.marginTop="10px";
+    resetBtn.onclick=async()=>{
+      if(!inPass.value.trim())return toast("Escribí una contraseña");
+      await updateDoc(doc(playersCol,p.id),{pass:await hash(inPass.value)});
+      toast(`Contraseña de ${p.displayName} actualizada ✓`);inPass.value="";
+    };
+    actions.appendChild(resetBtn);
+
+    // hacer admin / quitar admin
+    if(p.id!==me.id){
+      const adminBtn=el("button","btn btn-ghost btn-sm",p.isAdmin?"Quitar admin":"Hacer admin");
+      adminBtn.style.cssText="margin-top:10px;margin-left:0";
+      adminBtn.onclick=async()=>{await updateDoc(doc(playersCol,p.id),{isAdmin:!p.isAdmin});toast(p.isAdmin?"Admin quitado":"Ahora es admin");};
+      actions.appendChild(document.createElement("br"));
+      actions.appendChild(adminBtn);
+    }
+
+    // eliminar cuenta
+    if(p.id!==me.id){
+      const delBtn=el("button","btn btn-danger btn-sm","🗑️ Eliminar cuenta");
+      delBtn.style.marginTop="10px";
+      delBtn.onclick=()=>adminDeletePlayer(p);
+      actions.appendChild(document.createElement("br"));
+      actions.appendChild(delBtn);
+    }
+
+    box.appendChild(actions);pc.appendChild(box);
+  });
   v.appendChild(pc);
 
   // banco + grilla de respuestas
@@ -650,21 +821,33 @@ function renderAdmin(){
     txt.value="";opt.value="";toast("Pregunta agregada ✓");};
   ac.appendChild(txt);ac.appendChild(opt);ac.appendChild(add);v.appendChild(ac);
 }
+
+async function adminDeletePlayer(p){
+  if(!confirm(`¿Eliminar la cuenta de ${p.displayName} (@${p.username})? Se borran también sus respuestas. No se puede deshacer.`))return;
+  try{
+    const myResp=await getDocs(query(respCol,where("playerId","==",p.id)));
+    const batch=writeBatch(db);
+    myResp.forEach(d=>batch.delete(d.ref));
+    batch.delete(doc(playersCol,p.id));
+    await batch.commit();
+    toast(`Cuenta de ${p.displayName} eliminada`);
+  }catch(e){console.error(e);toast("Error al eliminar");}
+}
+
 async function forceNewWeek(){
   if(players.length<3)return toast("Necesitás al menos 3 jugadores");
   if(!questions.length)return toast("Cargá preguntas primero");
   if(!confirm("Esto reinicia la semana en curso con un nuevo topo y consignas. Se borran las publicaciones y votos de esta semana. ¿Seguir?"))return;
   const anchor=weekAnchor(),id=weekIdOf(anchor);
-  // borrar subs y responses de esta semana
   const batch=writeBatch(db);
   const [s1,s2]=await Promise.all([getDocs(query(subsCol,where("week","==",id))),getDocs(query(respCol,where("week","==",id)))]);
   s1.forEach(d=>batch.delete(d.ref));s2.forEach(d=>batch.delete(d.ref));await batch.commit();
-  // re-roll verdaderamente al azar
   const topo=players[Math.floor(Math.random()*players.length)];
   const pool=[...CONSIGNAS];const c1=pool.splice(Math.floor(Math.random()*pool.length),1)[0];const c2=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
   const color=COLORS[Math.floor(Math.random()*COLORS.length)];
   const qids=[...questions].sort(()=>Math.random()-0.5).slice(0,19).map(q=>q.id);
   await setDoc(doc(weeksCol,id),{id,anchor:anchor.getTime(),topoId:topo.id,consignas:[c1.id,c2.id],color,weeklyQuestions:qids,topoSubs:{},forced:true,createdAt:serverTimestamp()});
+  topoRevealed=false;
   toast("Semana reiniciada 🎲");go("home");
 }
 
