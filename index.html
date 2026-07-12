@@ -251,6 +251,11 @@ const CONSIGNAS = [
 let me=null, players=[], questions=[], weeks=[], responses=[], subs=[];
 let unsub=[], ensuring=false, current="home";
 let topoRevealed=false; // control del ojo en admin
+let viewLock=false;     // cuando true, se posterga el re-render de la vista actual (evita borrar interacciones en curso)
+let quizActive=false;   // hay un cuestionario de votación en progreso
+// Modo simulación (solo admin, solo afecta tu propia vista para testear)
+let SIM={ phase:null, topoId:null }; // null = comportamiento real
+function simOn(){ return SIM.phase!==null || SIM.topoId!==null; }
 
 /* ---------- Helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -286,6 +291,7 @@ function bounds(anchor){
   return {wed,sat,sunClose,nextAnchor};
 }
 function phaseOf(anchor,now=new Date()){
+  if(SIM.phase!==null) return SIM.phase; // override de testing (solo tu vista)
   const {wed,sat,sunClose}=bounds(anchor);
   if(now<wed) return "c1";
   if(now<sat) return "c2";
@@ -293,6 +299,7 @@ function phaseOf(anchor,now=new Date()){
   return "results";
 }
 function currentWeek(){const id=weekIdOf(weekAnchor());return weeks.find(w=>w.id===id)||null;}
+function topoIdOf(w){ return (SIM.topoId!==null)?SIM.topoId:(w?w.topoId:null); } // override de testing
 function fmtDate(ts){const d=new Date(ts);return d.toLocaleString("es-AR",{weekday:"short",hour:"2-digit",minute:"2-digit"});}
 
 /* ============ AUTH ============ */
@@ -450,13 +457,21 @@ function computeRanking(){
 }
 
 /* ============ NAV ============ */
-window.go=(v)=>{current=v;
+window.go=(v)=>{
+  // El usuario navega a propósito: liberamos cualquier interacción en curso.
+  viewLock=false; quizActive=false; if(voteTimer){clearInterval(voteTimer);voteTimer=null;}
+  current=v;
   document.querySelectorAll(".view").forEach(x=>x.classList.add("hidden"));
   $("#view-"+v).classList.remove("hidden");
   document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.v===v));
-  renderCurrent();
+  renderCurrent(true);
 };
-function renderCurrent(){if(!me)return;({home:renderHome,topo:renderTopo,feed:renderFeed,vote:renderVote,perfil:renderPerfil,admin:renderAdmin}[current]||(()=>{}))();}
+function renderCurrent(force){
+  if(!me)return;
+  // Mientras hay una interacción en curso (foto, texto, quiz) no re-dibujamos por updates de fondo.
+  if(viewLock && !force) return;
+  ({home:renderHome,topo:renderTopo,feed:renderFeed,vote:renderVote,perfil:renderPerfil,admin:renderAdmin}[current]||(()=>{}))();
+}
 
 /* ============ HOME ============ */
 function renderHome(){
@@ -509,7 +524,7 @@ function renderTopo(){
   const v=$("#view-topo");v.innerHTML="";
   const w=currentWeek();const anchor=weekAnchor(),phase=phaseOf(anchor);
   if(!w){v.appendChild(empty("🕵️","Arrancando la semana","En un momento se asigna el topo. Volvé a entrar en unos segundos."));return;}
-  const amTopo=w.topoId===me.id;
+  const amTopo=topoIdOf(w)===me.id;
   if(!amTopo){v.appendChild(empty("🤫","No sos el topo","O al menos eso querés que crean 😏 Mirá las pistas y preparate para votar."));return;}
   if(phase==="voting"||phase==="results"){
     v.appendChild(empty("⌛","Tu trabajo terminó","Cumpliste como topo esta semana. Ahora esperá los resultados."));return;
@@ -536,11 +551,13 @@ function renderTopo(){
     if(!open){card.appendChild(el("p","muted",`<div style="margin-top:8px">${idx===0?"Plazo vencido.":"Se habilita cuando termine la consigna 1."}</div>`));v.appendChild(card);return;}
     if(c.tipo==="texto"){
       const ta=el("textarea");ta.placeholder="Escribí tu publicación…";
+      ta.addEventListener("input",()=>{viewLock=true;}); // no borrar lo que estás escribiendo
       const b=el("button","btn btn-primary btn-block","Publicar");
       b.onclick=async()=>{if(!ta.value.trim())return toast("Escribí algo");b.disabled=true;b.textContent="Publicando…";await publishSub(w,cid,{tipo:"texto",text:ta.value.trim()});};
       card.appendChild(ta);card.appendChild(b);
     }else{
       const inp=el("input");inp.type="file";inp.accept=c.tipo==="audio"?"audio/*":"image/*";
+      inp.addEventListener("change",()=>{viewLock=true;}); // proteger el archivo seleccionado del re-render
       const b=el("button","btn btn-primary btn-block","Subir y publicar");
       b.onclick=async()=>{const f=inp.files[0];if(!f)return toast("Elegí un archivo");b.disabled=true;b.textContent="Subiendo…";
         try{const url=await uploadToCloudinary(f);await publishSub(w,cid,{tipo:c.tipo,url});}catch(e){toast("Error al subir");b.disabled=false;b.textContent="Subir y publicar";}};
@@ -552,7 +569,9 @@ function renderTopo(){
 async function publishSub(w,cid,data){
   await addDoc(subsCol,{week:w.id,consignaId:cid,...data,createdAt:serverTimestamp()});
   await updateDoc(doc(weeksCol,w.id),{[`topoSubs.${cid}`]:true});
+  viewLock=false; // ya publicó: liberamos y refrescamos para mostrar "✓ Publicada"
   toast("Publicado ✓");
+  renderCurrent(true);
 }
 
 /* ============ FEED ============ */
@@ -563,7 +582,7 @@ function renderFeed(){
   v.appendChild(el("h3","",`Pistas · semana del ${new Date(w.anchor).toLocaleDateString("es-AR")}`));
   v.appendChild(el("p","muted","Las consignas se revelan en su horario. Estudialas: te van a ayudar a descubrir al topo."));
   const anchor=new Date(w.anchor);const {wed,sat}=bounds(anchor);const now=new Date();
-  const amTopo=w.topoId===me.id;
+  const amTopo=topoIdOf(w)===me.id;
   (w.consignas||[]).forEach((cid,idx)=>{
     const c=CONSIGNAS.find(x=>x.id===cid);
     const reveal=idx===0?wed:sat;
@@ -593,17 +612,20 @@ function renderFeed(){
 /* ============ VOTE ============ */
 let voteTimer=null;
 function renderVote(){
+  // Si ya hay un quiz en curso, no lo reconstruimos (evita el reinicio a la pregunta 1).
+  if(quizActive && $("#view-vote").children.length) return;
   const v=$("#view-vote");v.innerHTML="";
   const w=currentWeek();const phase=phaseOf(weekAnchor());
   if(!w||phase!=="voting"){
     const next=phase==="results"?"La votación de esta semana ya cerró.":"La votación se abre el sábado al mediodía.";
     v.appendChild(empty("🗳️","Votación cerrada",next));return;}
-  if(w.topoId===me.id){v.appendChild(empty("🙊","Sos el topo","Esta semana no votás. Esperá los resultados."));return;}
+  if(topoIdOf(w)===me.id){v.appendChild(empty("🙊","Sos el topo","Esta semana no votás. Esperá los resultados."));return;}
   if(responses.find(r=>r.week===w.id&&r.playerId===me.id)){
     v.appendChild(empty("✅","Ya respondiste","Tu cuestionario quedó guardado. Mirá el ranking cuando cierre la semana."));return;}
   startQuiz(v,w);
 }
 function startQuiz(v,w){
+  quizActive=true; viewLock=true; // proteger el quiz de re-renders de fondo
   const weekQs=(w.weeklyQuestions||[]).map(id=>questions.find(q=>q.id===id)).filter(Boolean);
   const others=players.filter(p=>p.id!==me.id);
   let idx=0,answers={};const TOTAL=weekQs.length+1,START=Date.now(),LIMIT=120000;
@@ -625,10 +647,12 @@ function startQuiz(v,w){
         b.onclick=()=>{answers.__identity=p.id;idx++;step();};body.appendChild(b);});}}
   function step(){if(idx>=TOTAL){clearInterval(voteTimer);finish(false);}else paint();}
   async function finish(timedOut){
+    quizActive=false; // el quiz terminó; el candado se libera al navegar
     body.innerHTML=`<div class="spinner"></div><p class="center muted">Guardando…</p>`;
-    const topo=players.find(p=>p.id===w.topoId);
-    let correct=0;weekQs.forEach(q=>{const corr=(q.answers||{})[w.topoId];if(corr&&answers[q.id]===corr)correct++;});
-    const gotIdentity=answers.__identity===w.topoId;if(gotIdentity)correct++;
+    const realTopo=topoIdOf(w);
+    const topo=players.find(p=>p.id===realTopo);
+    let correct=0;weekQs.forEach(q=>{const corr=(q.answers||{})[realTopo];if(corr&&answers[q.id]===corr)correct++;});
+    const gotIdentity=answers.__identity===realTopo;if(gotIdentity)correct++;
     await setDoc(doc(respCol,`${w.id}_${me.id}`),{week:w.id,playerId:me.id,answers,correct,gotIdentity,timedOut,createdAt:serverTimestamp()});
     card.innerHTML=`<div class="center" style="padding:20px 0"><div style="font-size:46px">🎯</div>
       <h2 style="margin:10px 0">¡Listo!</h2>
@@ -732,6 +756,55 @@ function renderAdmin(){
   const force=el("button","btn btn-primary","🎲 Forzar nueva semana ahora");
   force.onclick=()=>forceNewWeek();ctrl.appendChild(force);
   v.appendChild(ctrl);
+
+  // ===== MODO SIMULACIÓN (testing) =====
+  const sim=el("div","card");
+  sim.style.border = simOn() ? "1px solid var(--red)" : "1px solid var(--stroke)";
+  sim.innerHTML=`<h3 style="margin-bottom:4px">🧪 Modo simulación (testing)</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">Solo afecta <b>tu vista</b>, sin tocar la semana real ni a los demás. Sirve para probar cada pantalla sin esperar días. Recordá <b>Salir</b> al terminar.</p>`;
+  if(simOn()){
+    const banner=el("div","",`<div class="pill red" style="margin-bottom:12px">● Simulación activa${SIM.phase?` · fase: ${SIM.phase}`:""}${SIM.topoId!==null?` · topo: ${esc(players.find(p=>p.id===SIM.topoId)?.displayName||"vos")}`:""}</div>`);
+    sim.appendChild(banner);
+  }
+
+  // fase
+  sim.appendChild(el("label","fl","Forzar fase"));
+  const phaseWrap=el("div");phaseWrap.style.cssText="display:flex;flex-wrap:wrap;gap:8px";
+  const phases=[["auto","Auto (real)",null],["c1","Consigna 1","c1"],["c2","Consigna 2","c2"],["voting","Votación","voting"],["results","Resultados","results"]];
+  phases.forEach(([key,lbl,val])=>{
+    const active = SIM.phase===val;
+    const b=el("button",`btn btn-sm ${active?"btn-primary":"btn-ghost"}`,lbl);
+    b.onclick=()=>{SIM.phase=val;renderCurrent(true);renderAdmin();};
+    phaseWrap.appendChild(b);
+  });
+  sim.appendChild(phaseWrap);
+
+  // topo
+  sim.appendChild(el("label","fl","Simular quién es el topo"));
+  const topoSel=el("select",null,
+    `<option value="__auto__" ${SIM.topoId===null?"selected":""}>Auto (topo real de la semana)</option>`+
+    players.map(p=>`<option value="${p.id}" ${SIM.topoId===p.id?"selected":""}>${esc(p.displayName)}${p.id===me.id?" (vos)":""}</option>`).join(""));
+  topoSel.onchange=()=>{SIM.topoId = topoSel.value==="__auto__" ? null : topoSel.value; renderCurrent(true); renderAdmin();};
+  sim.appendChild(topoSel);
+  sim.appendChild(el("p","muted",`<div style="font-size:12px;margin-top:8px">Para probar <b>subir consignas</b>: fase C1/C2 + topo = vos → pestaña Topo.<br>Para probar <b>votar</b>: fase Votación + topo = otra persona → pestaña Votar.</div>`));
+
+  // borrar mi voto de esta semana (para re-testear votación)
+  const clearVote=el("button","btn btn-ghost btn-sm","🗑️ Borrar mi voto de esta semana");
+  clearVote.style.marginTop="12px";
+  clearVote.onclick=async()=>{
+    const w2=currentWeek();if(!w2)return toast("No hay semana activa");
+    const ref=doc(respCol,`${w2.id}_${me.id}`);
+    try{await deleteDoc(ref);toast("Voto borrado, ya podés volver a votar ✓");renderCurrent(true);}
+    catch(e){toast("No tenías voto registrado");}
+  };
+  sim.appendChild(clearVote);
+
+  if(simOn()){
+    const exit=el("button","btn btn-danger btn-block","Salir del modo simulación");
+    exit.onclick=()=>{SIM={phase:null,topoId:null};toast("Volviste al modo real");renderCurrent(true);renderAdmin();};
+    sim.appendChild(exit);
+  }
+  v.appendChild(sim);
 
   // jugadores (gestión completa)
   const pc=el("div","card");pc.innerHTML=`<h3 style="margin-bottom:6px">Jugadores (${players.length})</h3>
