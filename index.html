@@ -84,9 +84,10 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   .acc{padding:0;overflow:hidden}
   .acc-head{width:100%;background:none;border:none;color:var(--txt);font-family:var(--font);
-    display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 20px;cursor:pointer;text-align:left}
-  .acc-head .acc-title{font-size:16px;font-weight:800;letter-spacing:-.02em}
-  .acc-head .acc-sub{font-size:12px;color:var(--muted);font-weight:500;margin-top:2px}
+    display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;cursor:pointer;text-align:left}
+  .acc-headtext{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .acc-head .acc-title{display:block;font-size:16px;font-weight:800;letter-spacing:-.02em;line-height:1.2}
+  .acc-head .acc-sub{display:block;font-size:12px;color:var(--muted);font-weight:500;line-height:1.35}
   .acc-chevron{color:var(--muted);font-size:13px;flex-shrink:0}
   .acc-body{padding:0 20px 20px;border-top:1px solid var(--stroke);margin-top:-2px;padding-top:16px}
 </style>
@@ -457,7 +458,8 @@ function computeRanking(){
     const anchor=new Date(w.anchor);const {sunClose}=bounds(anchor);
     if(new Date()<sunClose) return;
     const parts=responses.filter(r=>r.week===w.id && r.playerId!==w.topoId);
-    const avg=parts.length?parts.reduce((a,b)=>a+(b.correct||0),0)/parts.length:0;
+    if(!parts.length) return; // sin votos en la semana, el topo no suma bonus
+    const avg=parts.reduce((a,b)=>a+(b.correct||0),0)/parts.length;
     const bonus=Math.max(0,Math.floor(20-avg));
     if(map[w.topoId])map[w.topoId].pts+=bonus;
   });
@@ -520,10 +522,10 @@ function resultsCard(w){
   const parts=responses.filter(r=>r.week===w.id && r.playerId!==w.topoId);
   const found=parts.filter(r=>r.gotIdentity).length;
   const avg=parts.length?parts.reduce((a,b)=>a+(b.correct||0),0)/parts.length:0;
-  const bonus=Math.max(0,Math.floor(20-avg));
+  const bonus=parts.length?Math.max(0,Math.floor(20-avg)):0;
   c.innerHTML=`<div class="eyebrow">Resultados</div>
     <h3 style="margin:6px 0 10px">El topo era ${esc(topo?.displayName||"?")} 🕵️</h3>
-    <p class="muted" style="margin:0">${found} de ${parts.length} lo descubrieron · el topo sumó <b class="red">${bonus} pts</b> esta semana.</p>`;
+    <p class="muted" style="margin:0">${parts.length?`${found} de ${parts.length} lo descubrieron · el topo sumó <b class="red">${bonus} pts</b> esta semana.`:"Nadie votó esta semana, así que no hubo puntos."}</p>`;
   return c;
 }
 
@@ -753,7 +755,7 @@ function adminSection(key,title,sub,danger){
   const wrap=el("div","card acc");
   if(danger) wrap.style.border="1px solid var(--red)";
   const head=el("button","acc-head");
-  head.innerHTML=`<span><span class="acc-title">${title}</span>${sub?`<span class="acc-sub">${sub}</span>`:""}</span><span class="acc-chevron">${adminOpen[key]?"▲":"▼"}</span>`;
+  head.innerHTML=`<span class="acc-headtext"><span class="acc-title">${title}</span>${sub?`<span class="acc-sub">${sub}</span>`:""}</span><span class="acc-chevron">${adminOpen[key]?"▲":"▼"}</span>`;
   const body=el("div","acc-body");
   if(!adminOpen[key]) body.style.display="none";
   head.onclick=()=>{
