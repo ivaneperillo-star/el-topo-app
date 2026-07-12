@@ -82,6 +82,13 @@
   .steps{display:flex;gap:6px;margin:14px 0}
   .step{flex:1;height:5px;border-radius:99px;background:var(--panel-2)}.step.on{background:var(--red)}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  .acc{padding:0;overflow:hidden}
+  .acc-head{width:100%;background:none;border:none;color:var(--txt);font-family:var(--font);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 20px;cursor:pointer;text-align:left}
+  .acc-head .acc-title{font-size:16px;font-weight:800;letter-spacing:-.02em}
+  .acc-head .acc-sub{font-size:12px;color:var(--muted);font-weight:500;margin-top:2px}
+  .acc-chevron{color:var(--muted);font-size:13px;flex-shrink:0}
+  .acc-body{padding:0 20px 20px;border-top:1px solid var(--stroke);margin-top:-2px;padding-top:16px}
 </style>
 </head>
 <body>
@@ -251,6 +258,7 @@ const CONSIGNAS = [
 let me=null, players=[], questions=[], weeks=[], responses=[], subs=[];
 let unsub=[], ensuring=false, current="home";
 let topoRevealed=false; // control del ojo en admin
+let adminOpen={ control:true, sim:false, players:false, questions:false, addq:false }; // secciones plegables del admin
 let viewLock=false;     // cuando true, se posterga el re-render de la vista actual (evita borrar interacciones en curso)
 let quizActive=false;   // hay un cuestionario de votación en progreso
 // Modo simulación (solo admin, solo afecta tu propia vista para testear)
@@ -622,7 +630,17 @@ function renderVote(){
   if(topoIdOf(w)===me.id){v.appendChild(empty("🙊","Sos el topo","Esta semana no votás. Esperá los resultados."));return;}
   if(responses.find(r=>r.week===w.id&&r.playerId===me.id)){
     v.appendChild(empty("✅","Ya respondiste","Tu cuestionario quedó guardado. Mirá el ranking cuando cierre la semana."));return;}
-  startQuiz(v,w);
+  // Pantalla previa: la votación arranca recién cuando el jugador toca el botón.
+  const intro=el("div","card center");
+  intro.innerHTML=`<div style="font-size:46px;margin-bottom:6px">🗳️</div>
+    <h2 style="margin-bottom:8px">Es hora de votar</h2>
+    <p class="muted" style="margin:0 0 6px">Vas a responder ${(w.weeklyQuestions||[]).length + 1} preguntas sobre el topo.</p>
+    <p class="muted" style="margin:0 0 4px">Tenés <b style="color:var(--txt)">2 minutos</b> desde que empezás.</p>
+    <p class="muted" style="margin:0 0 18px;font-size:13px">Una vez que arranques, el reloj corre y no se puede pausar.</p>`;
+  const startBtn=el("button","btn btn-primary btn-block","Comenzar votación");
+  startBtn.onclick=()=>{ v.innerHTML=""; startQuiz(v,w); };
+  intro.appendChild(startBtn);
+  v.appendChild(intro);
 }
 function startQuiz(v,w){
   quizActive=true; viewLock=true; // proteger el quiz de re-renders de fondo
@@ -654,11 +672,10 @@ function startQuiz(v,w){
     let correct=0;weekQs.forEach(q=>{const corr=(q.answers||{})[realTopo];if(corr&&answers[q.id]===corr)correct++;});
     const gotIdentity=answers.__identity===realTopo;if(gotIdentity)correct++;
     await setDoc(doc(respCol,`${w.id}_${me.id}`),{week:w.id,playerId:me.id,answers,correct,gotIdentity,timedOut,createdAt:serverTimestamp()});
-    card.innerHTML=`<div class="center" style="padding:20px 0"><div style="font-size:46px">🎯</div>
-      <h2 style="margin:10px 0">¡Listo!</h2>
-      <p class="muted">Acertaste <b class="red">${correct}</b> de ${TOTAL}.</p>
-      <p class="muted">${gotIdentity?"Y descubriste al topo 🕵️":"No diste con el topo esta vez."}</p>
-      <p class="muted" style="font-size:12px;margin-top:10px">Los puntajes finales se publican el domingo al mediodía.</p></div>`;
+    card.innerHTML=`<div class="center" style="padding:20px 0"><div style="font-size:46px">🔒</div>
+      <h2 style="margin:10px 0">¡Voto registrado!</h2>
+      <p class="muted">Tus respuestas quedaron guardadas.</p>
+      <p class="muted" style="font-size:12px;margin-top:10px">Los resultados y el ranking se publican el domingo al mediodía.</p></div>`;
   }
   paint();
 }
@@ -731,168 +748,175 @@ function renderPerfil(){
 }
 
 /* ============ ADMIN ============ */
+// Helper: crea una sección plegable. Devuelve el body donde colgar el contenido.
+function adminSection(key,title,sub,danger){
+  const wrap=el("div","card acc");
+  if(danger) wrap.style.border="1px solid var(--red)";
+  const head=el("button","acc-head");
+  head.innerHTML=`<span><span class="acc-title">${title}</span>${sub?`<span class="acc-sub">${sub}</span>`:""}</span><span class="acc-chevron">${adminOpen[key]?"▲":"▼"}</span>`;
+  const body=el("div","acc-body");
+  if(!adminOpen[key]) body.style.display="none";
+  head.onclick=()=>{
+    adminOpen[key]=!adminOpen[key];
+    body.style.display=adminOpen[key]?"":"none";
+    head.querySelector(".acc-chevron").textContent=adminOpen[key]?"▲":"▼";
+  };
+  wrap.appendChild(head);wrap.appendChild(body);
+  return {wrap,body};
+}
+
 function renderAdmin(){
   const v=$("#view-admin");v.innerHTML="";
   if(!me.isAdmin){v.appendChild(empty("🔒","Solo admin","Esta sección no está disponible para tu cuenta."));return;}
-
-  // control de semana
   const w=currentWeek();const phase=phaseOf(weekAnchor());
-  const topoName=w?esc(players.find(p=>p.id===w.topoId)?.displayName||"?"):null;
-  const ctrl=el("div","card");
-  ctrl.innerHTML=`<h3 style="margin-bottom:4px">Control de la semana</h3>
-    <p class="muted" style="margin:0 0 4px">Fase actual: <b>${phase}</b></p>`;
-  if(w){
-    const topoLine=el("p","muted");topoLine.style.margin="0 0 12px";
-    const eyeBtn=el("button","btn btn-ghost btn-sm",topoRevealed?"🙈 Ocultar":"👁️ Ver topo");
-    eyeBtn.style.marginRight="8px";
-    const nameSpan=el("span",null,topoRevealed?`Topo: <b class="red">${topoName}</b>`:'Topo: <b class="red">•••••••</b>');
-    eyeBtn.onclick=()=>{topoRevealed=!topoRevealed;renderAdmin();};
-    topoLine.appendChild(eyeBtn);topoLine.appendChild(nameSpan);
-    ctrl.appendChild(topoLine);
-  }
-  const note=el("p","muted");note.style.cssText="margin:0 0 12px;font-size:13px";
-  note.textContent="El juego avanza solo por calendario. Usá esto solo si querés reiniciar la semana en curso (nuevo topo y consignas al azar). Se borran las publicaciones y votos de esta semana.";
-  ctrl.appendChild(note);
-  const force=el("button","btn btn-primary","🎲 Forzar nueva semana ahora");
-  force.onclick=()=>forceNewWeek();ctrl.appendChild(force);
-  v.appendChild(ctrl);
 
-  // ===== MODO SIMULACIÓN (testing) =====
-  const sim=el("div","card");
-  sim.style.border = simOn() ? "1px solid var(--red)" : "1px solid var(--stroke)";
-  sim.innerHTML=`<h3 style="margin-bottom:4px">🧪 Modo simulación (testing)</h3>
-    <p class="muted" style="margin:0 0 12px;font-size:13px">Solo afecta <b>tu vista</b>, sin tocar la semana real ni a los demás. Sirve para probar cada pantalla sin esperar días. Recordá <b>Salir</b> al terminar.</p>`;
-  if(simOn()){
-    const banner=el("div","",`<div class="pill red" style="margin-bottom:12px">● Simulación activa${SIM.phase?` · fase: ${SIM.phase}`:""}${SIM.topoId!==null?` · topo: ${esc(players.find(p=>p.id===SIM.topoId)?.displayName||"vos")}`:""}</div>`);
-    sim.appendChild(banner);
-  }
-
-  // fase
-  sim.appendChild(el("label","fl","Forzar fase"));
-  const phaseWrap=el("div");phaseWrap.style.cssText="display:flex;flex-wrap:wrap;gap:8px";
-  const phases=[["auto","Auto (real)",null],["c1","Consigna 1","c1"],["c2","Consigna 2","c2"],["voting","Votación","voting"],["results","Resultados","results"]];
-  phases.forEach(([key,lbl,val])=>{
-    const active = SIM.phase===val;
-    const b=el("button",`btn btn-sm ${active?"btn-primary":"btn-ghost"}`,lbl);
-    b.onclick=()=>{SIM.phase=val;renderCurrent(true);renderAdmin();};
-    phaseWrap.appendChild(b);
-  });
-  sim.appendChild(phaseWrap);
-
-  // topo
-  sim.appendChild(el("label","fl","Simular quién es el topo"));
-  const topoSel=el("select",null,
-    `<option value="__auto__" ${SIM.topoId===null?"selected":""}>Auto (topo real de la semana)</option>`+
-    players.map(p=>`<option value="${p.id}" ${SIM.topoId===p.id?"selected":""}>${esc(p.displayName)}${p.id===me.id?" (vos)":""}</option>`).join(""));
-  topoSel.onchange=()=>{SIM.topoId = topoSel.value==="__auto__" ? null : topoSel.value; renderCurrent(true); renderAdmin();};
-  sim.appendChild(topoSel);
-  sim.appendChild(el("p","muted",`<div style="font-size:12px;margin-top:8px">Para probar <b>subir consignas</b>: fase C1/C2 + topo = vos → pestaña Topo.<br>Para probar <b>votar</b>: fase Votación + topo = otra persona → pestaña Votar.</div>`));
-
-  // borrar mi voto de esta semana (para re-testear votación)
-  const clearVote=el("button","btn btn-ghost btn-sm","🗑️ Borrar mi voto de esta semana");
-  clearVote.style.marginTop="12px";
-  clearVote.onclick=async()=>{
-    const w2=currentWeek();if(!w2)return toast("No hay semana activa");
-    const ref=doc(respCol,`${w2.id}_${me.id}`);
-    try{await deleteDoc(ref);toast("Voto borrado, ya podés volver a votar ✓");renderCurrent(true);}
-    catch(e){toast("No tenías voto registrado");}
-  };
-  sim.appendChild(clearVote);
-
-  if(simOn()){
-    const exit=el("button","btn btn-danger btn-block","Salir del modo simulación");
-    exit.onclick=()=>{SIM={phase:null,topoId:null};toast("Volviste al modo real");renderCurrent(true);renderAdmin();};
-    sim.appendChild(exit);
-  }
-  v.appendChild(sim);
-
-  // jugadores (gestión completa)
-  const pc=el("div","card");pc.innerHTML=`<h3 style="margin-bottom:6px">Jugadores (${players.length})</h3>
-    <p class="muted" style="margin:0 0 10px;font-size:13px">Editá usuario, reseteá contraseña o eliminá cuentas.</p>`;
-  players.forEach(p=>{
-    const box=el("div","grid-q");
-    const head=el("div","",`<div style="display:flex;align-items:center;gap:10px">
-      <img class="avatar" style="width:36px;height:36px" src="${p.photoURL||defaultAvatar(p.displayName)}"/>
-      <div style="flex:1"><b>${esc(p.displayName)}</b> <span class="muted">@${esc(p.username)}</span>${p.isAdmin?' <span class="pill red" style="margin-left:4px">admin</span>':''}${p.id===me.id?' <span class="muted">(vos)</span>':''}</div>
-    </div>`);
-    box.appendChild(head);
-
-    // acciones
-    const actions=el("div");actions.style.marginTop="12px";
-
-    // editar usuario / nombre
-    actions.appendChild(el("label","fl","Nombre para mostrar"));
-    const inName=el("input");inName.value=p.displayName;actions.appendChild(inName);
-    actions.appendChild(el("label","fl","Usuario"));
-    const inUser=el("input");inUser.value=p.username;inUser.autocapitalize="none";actions.appendChild(inUser);
-    const saveInfo=el("button","btn btn-ghost btn-sm","Guardar usuario/nombre");saveInfo.style.marginTop="10px";
-    saveInfo.onclick=async()=>{
-      const nn=inName.value.trim(),nu=inUser.value.trim().toLowerCase();
-      if(!nn||!nu)return toast("Nombre y usuario no pueden quedar vacíos");
-      if(nu!==p.username){const dup=await getDocs(query(playersCol,where("username","==",nu)));if(!dup.empty)return toast("Ese usuario ya está tomado");}
-      await updateDoc(doc(playersCol,p.id),{displayName:nn,username:nu});toast("Actualizado ✓");
-    };
-    actions.appendChild(saveInfo);
-
-    // resetear contraseña
-    actions.appendChild(el("label","fl","Nueva contraseña para este jugador"));
-    const inPass=el("input");inPass.type="text";inPass.placeholder="escribí la nueva contraseña";actions.appendChild(inPass);
-    const resetBtn=el("button","btn btn-ghost btn-sm","🔑 Resetear contraseña");resetBtn.style.marginTop="10px";
-    resetBtn.onclick=async()=>{
-      if(!inPass.value.trim())return toast("Escribí una contraseña");
-      await updateDoc(doc(playersCol,p.id),{pass:await hash(inPass.value)});
-      toast(`Contraseña de ${p.displayName} actualizada ✓`);inPass.value="";
-    };
-    actions.appendChild(resetBtn);
-
-    // hacer admin / quitar admin
-    if(p.id!==me.id){
-      const adminBtn=el("button","btn btn-ghost btn-sm",p.isAdmin?"Quitar admin":"Hacer admin");
-      adminBtn.style.cssText="margin-top:10px;margin-left:0";
-      adminBtn.onclick=async()=>{await updateDoc(doc(playersCol,p.id),{isAdmin:!p.isAdmin});toast(p.isAdmin?"Admin quitado":"Ahora es admin");};
-      actions.appendChild(document.createElement("br"));
-      actions.appendChild(adminBtn);
+  /* ----- Sección: Control de la semana ----- */
+  {
+    const {wrap,body}=adminSection("control","📅 Control de la semana",`Fase actual: ${phase}`);
+    const topoName=w?esc(players.find(p=>p.id===w.topoId)?.displayName||"?"):null;
+    if(w){
+      const topoLine=el("p","muted");topoLine.style.margin="0 0 12px";
+      const eyeBtn=el("button","btn btn-ghost btn-sm",topoRevealed?"🙈 Ocultar":"👁️ Ver topo");
+      eyeBtn.style.marginRight="8px";
+      const nameSpan=el("span",null,topoRevealed?`Topo: <b class="red">${topoName}</b>`:'Topo: <b class="red">•••••••</b>');
+      eyeBtn.onclick=()=>{topoRevealed=!topoRevealed;renderAdmin();};
+      topoLine.appendChild(eyeBtn);topoLine.appendChild(nameSpan);
+      body.appendChild(topoLine);
     }
+    const note=el("p","muted");note.style.cssText="margin:0 0 12px;font-size:13px";
+    note.textContent="El juego avanza solo por calendario. Usá esto solo si querés reiniciar la semana en curso (nuevo topo y consignas al azar). Se borran las publicaciones y votos de esta semana.";
+    body.appendChild(note);
+    const force=el("button","btn btn-primary","🎲 Forzar nueva semana ahora");
+    force.onclick=()=>forceNewWeek();body.appendChild(force);
+    v.appendChild(wrap);
+  }
 
-    // eliminar cuenta
-    if(p.id!==me.id){
-      const delBtn=el("button","btn btn-danger btn-sm","🗑️ Eliminar cuenta");
-      delBtn.style.marginTop="10px";
-      delBtn.onclick=()=>adminDeletePlayer(p);
-      actions.appendChild(document.createElement("br"));
-      actions.appendChild(delBtn);
+  /* ----- Sección: Modo simulación ----- */
+  {
+    const {wrap,body}=adminSection("sim","🧪 Modo simulación (testing)","Probá cada pantalla sin esperar días",simOn());
+    body.appendChild(el("p","muted",`<div style="margin:0 0 12px;font-size:13px">Solo afecta <b>tu vista</b>, sin tocar la semana real ni a los demás. Recordá <b>Salir</b> al terminar.</div>`));
+    if(simOn()){
+      body.appendChild(el("div","",`<div class="pill red" style="margin-bottom:12px">● Simulación activa${SIM.phase?` · fase: ${SIM.phase}`:""}${SIM.topoId!==null?` · topo: ${esc(players.find(p=>p.id===SIM.topoId)?.displayName||"vos")}`:""}</div>`));
     }
+    body.appendChild(el("label","fl","Forzar fase"));
+    const phaseWrap=el("div");phaseWrap.style.cssText="display:flex;flex-wrap:wrap;gap:8px";
+    const phases=[["auto","Auto (real)",null],["c1","Consigna 1","c1"],["c2","Consigna 2","c2"],["voting","Votación","voting"],["results","Resultados","results"]];
+    phases.forEach(([key,lbl,val])=>{
+      const active=SIM.phase===val;
+      const b=el("button",`btn btn-sm ${active?"btn-primary":"btn-ghost"}`,lbl);
+      b.onclick=()=>{SIM.phase=val;renderCurrent(true);renderAdmin();};
+      phaseWrap.appendChild(b);
+    });
+    body.appendChild(phaseWrap);
+    body.appendChild(el("label","fl","Simular quién es el topo"));
+    const topoSel=el("select",null,
+      `<option value="__auto__" ${SIM.topoId===null?"selected":""}>Auto (topo real de la semana)</option>`+
+      players.map(p=>`<option value="${p.id}" ${SIM.topoId===p.id?"selected":""}>${esc(p.displayName)}${p.id===me.id?" (vos)":""}</option>`).join(""));
+    topoSel.onchange=()=>{SIM.topoId=topoSel.value==="__auto__"?null:topoSel.value;renderCurrent(true);renderAdmin();};
+    body.appendChild(topoSel);
+    body.appendChild(el("p","muted",`<div style="font-size:12px;margin-top:8px">Para probar <b>subir consignas</b>: fase C1/C2 + topo = vos → pestaña Topo.<br>Para probar <b>votar</b>: fase Votación + topo = otra persona → pestaña Votar.</div>`));
 
-    box.appendChild(actions);pc.appendChild(box);
-  });
-  v.appendChild(pc);
+    const clearVote=el("button","btn btn-ghost btn-sm","🗑️ Borrar mi voto de esta semana");
+    clearVote.style.marginTop="12px";
+    clearVote.onclick=async()=>{
+      const w2=currentWeek();if(!w2)return toast("No hay semana activa");
+      const ref=doc(respCol,`${w2.id}_${me.id}`);
+      try{await deleteDoc(ref);toast("Voto borrado, ya podés volver a votar ✓");renderCurrent(true);}
+      catch(e){toast("No tenías voto registrado");}
+    };
+    body.appendChild(clearVote);
 
-  // banco + grilla de respuestas
-  const qc=el("div","card");
-  qc.innerHTML=`<h3 style="margin-bottom:4px">Preguntas y respuestas (${questions.length})</h3>
-    <p class="muted" style="margin:0 0 12px">Para cada pregunta marcá la respuesta correcta de cada jugador: qué respondería si esa persona fuera el topo.</p>`;
-  questions.forEach(q=>{const g=el("div");g.className="grid-q";
-    g.innerHTML=`<div class="qtxt">${esc(q.text)}</div>`;
-    players.forEach(p=>{const row=el("div","grid-row");
-      row.innerHTML=`<span class="pn">${esc(p.displayName)}</span>`;
-      const sel=el("select",null,`<option value="">—</option>`+(q.options||["Sí","No"]).map(o=>`<option ${(q.answers||{})[p.id]===o?'selected':''}>${esc(o)}</option>`).join(""));
-      sel.onchange=async()=>{await updateDoc(doc(questionsCol,q.id),{[`answers.${p.id}`]:sel.value});toast("Guardado ✓");};
-      row.appendChild(sel);g.appendChild(row);});
-    const del=el("button","btn btn-ghost btn-sm","Eliminar pregunta");del.style.marginTop="6px";
-    del.onclick=async()=>{if(confirm("¿Eliminar esta pregunta?")){await deleteDoc(doc(questionsCol,q.id));toast("Eliminada");}};
-    g.appendChild(del);qc.appendChild(g);});
-  v.appendChild(qc);
+    const resetRank=el("button","btn btn-danger btn-sm","🧹 Reiniciar ranking general a 0");
+    resetRank.style.marginTop="10px";
+    resetRank.onclick=()=>resetRanking();
+    body.appendChild(resetRank);
+    body.appendChild(el("p","muted",`<div style="font-size:12px;margin-top:6px">Borra todos los votos guardados (de todas las semanas) y deja a todos en 0 puntos. No borra jugadores ni preguntas.</div>`));
 
-  // agregar pregunta
-  const ac=el("div","card");ac.innerHTML=`<h3 style="margin-bottom:8px">Agregar pregunta</h3>`;
-  const txt=el("input");txt.placeholder="Ej. ¿El topo sabe nadar?";
-  const opt=el("input");opt.placeholder="Opciones separadas por coma (default: Sí, No)";opt.style.marginTop="10px";
-  const add=el("button","btn btn-primary btn-block","Agregar al banco");
-  add.onclick=async()=>{if(!txt.value.trim())return toast("Escribí la pregunta");
-    const options=opt.value.trim()?opt.value.split(",").map(s=>s.trim()).filter(Boolean):["Sí","No"];
-    await addDoc(questionsCol,{text:txt.value.trim(),options,answers:{},order:questions.length});
-    txt.value="";opt.value="";toast("Pregunta agregada ✓");};
-  ac.appendChild(txt);ac.appendChild(opt);ac.appendChild(add);v.appendChild(ac);
+    if(simOn()){
+      const exit=el("button","btn btn-danger btn-block","Salir del modo simulación");
+      exit.onclick=()=>{SIM={phase:null,topoId:null};toast("Volviste al modo real");renderCurrent(true);renderAdmin();};
+      body.appendChild(exit);
+    }
+    v.appendChild(wrap);
+  }
+
+  /* ----- Sección: Jugadores ----- */
+  {
+    const {wrap,body}=adminSection("players",`👥 Jugadores (${players.length})`,"Editar, resetear contraseña o eliminar");
+    players.forEach(p=>{
+      const box=el("div","grid-q");
+      box.appendChild(el("div","",`<div style="display:flex;align-items:center;gap:10px">
+        <img class="avatar" style="width:36px;height:36px" src="${p.photoURL||defaultAvatar(p.displayName)}"/>
+        <div style="flex:1"><b>${esc(p.displayName)}</b> <span class="muted">@${esc(p.username)}</span>${p.isAdmin?' <span class="pill red" style="margin-left:4px">admin</span>':''}${p.id===me.id?' <span class="muted">(vos)</span>':''}</div>
+      </div>`));
+      const actions=el("div");actions.style.marginTop="12px";
+      actions.appendChild(el("label","fl","Nombre para mostrar"));
+      const inName=el("input");inName.value=p.displayName;actions.appendChild(inName);
+      actions.appendChild(el("label","fl","Usuario"));
+      const inUser=el("input");inUser.value=p.username;inUser.autocapitalize="none";actions.appendChild(inUser);
+      const saveInfo=el("button","btn btn-ghost btn-sm","Guardar usuario/nombre");saveInfo.style.marginTop="10px";
+      saveInfo.onclick=async()=>{
+        const nn=inName.value.trim(),nu=inUser.value.trim().toLowerCase();
+        if(!nn||!nu)return toast("Nombre y usuario no pueden quedar vacíos");
+        if(nu!==p.username){const dup=await getDocs(query(playersCol,where("username","==",nu)));if(!dup.empty)return toast("Ese usuario ya está tomado");}
+        await updateDoc(doc(playersCol,p.id),{displayName:nn,username:nu});toast("Actualizado ✓");
+      };
+      actions.appendChild(saveInfo);
+      actions.appendChild(el("label","fl","Nueva contraseña para este jugador"));
+      const inPass=el("input");inPass.type="text";inPass.placeholder="escribí la nueva contraseña";actions.appendChild(inPass);
+      const resetBtn=el("button","btn btn-ghost btn-sm","🔑 Resetear contraseña");resetBtn.style.marginTop="10px";
+      resetBtn.onclick=async()=>{
+        if(!inPass.value.trim())return toast("Escribí una contraseña");
+        await updateDoc(doc(playersCol,p.id),{pass:await hash(inPass.value)});
+        toast(`Contraseña de ${p.displayName} actualizada ✓`);inPass.value="";
+      };
+      actions.appendChild(resetBtn);
+      if(p.id!==me.id){
+        const adminBtn=el("button","btn btn-ghost btn-sm",p.isAdmin?"Quitar admin":"Hacer admin");
+        adminBtn.style.cssText="margin-top:10px;margin-left:0";
+        adminBtn.onclick=async()=>{await updateDoc(doc(playersCol,p.id),{isAdmin:!p.isAdmin});toast(p.isAdmin?"Admin quitado":"Ahora es admin");};
+        actions.appendChild(document.createElement("br"));
+        actions.appendChild(adminBtn);
+        const delBtn=el("button","btn btn-danger btn-sm","🗑️ Eliminar cuenta");
+        delBtn.style.marginTop="10px";
+        delBtn.onclick=()=>adminDeletePlayer(p);
+        actions.appendChild(document.createElement("br"));
+        actions.appendChild(delBtn);
+      }
+      box.appendChild(actions);body.appendChild(box);
+    });
+    v.appendChild(wrap);
+  }
+
+  /* ----- Sección: Preguntas y respuestas ----- */
+  {
+    const {wrap,body}=adminSection("questions",`❓ Preguntas y respuestas (${questions.length})`,"Marcá qué respondería cada jugador si fuera el topo");
+    questions.forEach(q=>{const g=el("div");g.className="grid-q";
+      g.innerHTML=`<div class="qtxt">${esc(q.text)}</div>`;
+      players.forEach(p=>{const row=el("div","grid-row");
+        row.innerHTML=`<span class="pn">${esc(p.displayName)}</span>`;
+        const sel=el("select",null,`<option value="">—</option>`+(q.options||["Sí","No"]).map(o=>`<option ${(q.answers||{})[p.id]===o?'selected':''}>${esc(o)}</option>`).join(""));
+        sel.onchange=async()=>{await updateDoc(doc(questionsCol,q.id),{[`answers.${p.id}`]:sel.value});toast("Guardado ✓");};
+        row.appendChild(sel);g.appendChild(row);});
+      const del=el("button","btn btn-ghost btn-sm","Eliminar pregunta");del.style.marginTop="6px";
+      del.onclick=async()=>{if(confirm("¿Eliminar esta pregunta?")){await deleteDoc(doc(questionsCol,q.id));toast("Eliminada");}};
+      g.appendChild(del);body.appendChild(g);});
+    v.appendChild(wrap);
+  }
+
+  /* ----- Sección: Agregar pregunta ----- */
+  {
+    const {wrap,body}=adminSection("addq","➕ Agregar pregunta","Sumá preguntas al banco");
+    const txt=el("input");txt.placeholder="Ej. ¿El topo sabe nadar?";
+    const opt=el("input");opt.placeholder="Opciones separadas por coma (default: Sí, No)";opt.style.marginTop="10px";
+    const add=el("button","btn btn-primary btn-block","Agregar al banco");
+    add.onclick=async()=>{if(!txt.value.trim())return toast("Escribí la pregunta");
+      const options=opt.value.trim()?opt.value.split(",").map(s=>s.trim()).filter(Boolean):["Sí","No"];
+      await addDoc(questionsCol,{text:txt.value.trim(),options,answers:{},order:questions.length});
+      txt.value="";opt.value="";toast("Pregunta agregada ✓");};
+    body.appendChild(txt);body.appendChild(opt);body.appendChild(add);
+    v.appendChild(wrap);
+  }
 }
 
 async function adminDeletePlayer(p){
@@ -905,6 +929,23 @@ async function adminDeletePlayer(p){
     await batch.commit();
     toast(`Cuenta de ${p.displayName} eliminada`);
   }catch(e){console.error(e);toast("Error al eliminar");}
+}
+
+async function resetRanking(){
+  if(!confirm("Esto borra TODOS los votos guardados de todas las semanas y deja el ranking en 0 para todos. No se puede deshacer. ¿Seguir?"))return;
+  try{
+    const all=await getDocs(respCol);
+    if(all.empty){toast("El ranking ya está vacío");return;}
+    // borramos en lotes de 400 por si hay muchos votos (límite de writeBatch = 500)
+    const docs=all.docs;
+    for(let i=0;i<docs.length;i+=400){
+      const batch=writeBatch(db);
+      docs.slice(i,i+400).forEach(d=>batch.delete(d.ref));
+      await batch.commit();
+    }
+    toast("Ranking reiniciado a 0 ✓");
+    renderCurrent(true);
+  }catch(e){console.error(e);toast("Error al reiniciar el ranking");}
 }
 
 async function forceNewWeek(){
