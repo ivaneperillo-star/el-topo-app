@@ -450,13 +450,18 @@ async function ensureWeek(){
   ensuring=false;
 }
 
-/* ============ RANKING (calculado en vivo) ============ */
+/* ============ RANKING (solo semanas cerradas, para no filtrar pistas en vivo) ============ */
 function computeRanking(){
   const map={};players.forEach(p=>map[p.id]={player:p,pts:0});
-  responses.forEach(r=>{if(map[r.playerId])map[r.playerId].pts+=(r.correct||0);});
-  weeks.forEach(w=>{
+  // set de semanas ya cerradas (pasó el domingo 12:00)
+  const closedWeekIds=new Set(weeks.filter(w=>{
     const anchor=new Date(w.anchor);const {sunClose}=bounds(anchor);
-    if(new Date()<sunClose) return;
+    return new Date()>=sunClose;
+  }).map(w=>w.id));
+  // los aciertos de cada jugador solo cuentan una vez cerrada su semana
+  responses.forEach(r=>{if(map[r.playerId] && closedWeekIds.has(r.week))map[r.playerId].pts+=(r.correct||0);});
+  weeks.forEach(w=>{
+    if(!closedWeekIds.has(w.id)) return;
     const parts=responses.filter(r=>r.week===w.id && r.playerId!==w.topoId);
     if(!parts.length) return; // sin votos en la semana, el topo no suma bonus
     const avg=parts.reduce((a,b)=>a+(b.correct||0),0)/parts.length;
